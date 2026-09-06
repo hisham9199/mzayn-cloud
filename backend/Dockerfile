@@ -15,13 +15,19 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache bust - v5
-ARG CACHE_BUST=5
+# Cache bust - v6
+ARG CACHE_BUST=6
+
+# Install CPU-only PyTorch first (lightweight ~150MB instead of 2.5GB CUDA)
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download EasyOCR Arabic & English models during build
+RUN python -c "import easyocr; easyocr.Reader(['ar', 'en'], gpu=False)"
 
 # Copy application code
 COPY . .

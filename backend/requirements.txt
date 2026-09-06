@@ -22,6 +22,5 @@ boto3==1.34.131
 # PostgreSQL driver (Supabase)
 psycopg2-binary==2.9.9
 
-# ── EasyOCR (fallback محلي - اختياري) ─────────────────
-# قم بإلغاء التعليق إذا أردت دعم OCR بدون إنترنت:
-# easyocr==1.7.1
+# ── EasyOCR (محرك OCR عالي الدقة للبطاقات العربية) ────────
+easyocr==1.7.1

@@ -26,35 +26,33 @@ _use_google_vision = False
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
 
-# --- Tesseract OCR check (خفيف، مجاني، ومدمج في الحاوية) ---
-_use_tesseract = False
+# --- EasyOCR (الأولوية الأولى للدقة العالية في اللغة العربية والتصميم المعقد) ---
+try:
+    import easyocr
+    _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
+    OCR_AVAILABLE = True
+    OCR_ENGINE = "easyocr"
+    print("✅ EasyOCR initialized successfully")
+except Exception as e:
+    print(f"⚠️  EasyOCR not available: {e}")
+
+# --- Tesseract OCR fallback ---
 try:
     import pytesseract
     pytesseract.get_tesseract_version()
     _use_tesseract = True
     OCR_AVAILABLE = True
-    OCR_ENGINE = "tesseract"
+    if not _reader:
+        OCR_ENGINE = "tesseract"
     print("✅ Tesseract OCR initialized successfully")
 except Exception as e:
     print(f"⚠️  Tesseract not available: {e}")
 
-# --- EasyOCR fallback (إذا توفر) ---
-try:
-    import easyocr
-    _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
-    OCR_AVAILABLE = True
-    if not _use_tesseract:
-        OCR_ENGINE = "easyocr"
-    print("✅ EasyOCR initialized")
-except Exception as e:
-    pass
-
 # Check if any engine is ready
-if _use_tesseract or _reader is not None:
-    OCR_AVAILABLE = True
-elif GOOGLE_API_KEY:
+if not OCR_AVAILABLE and GOOGLE_API_KEY:
     OCR_AVAILABLE = True
     OCR_ENGINE = "google_vision"
+
 
 
 # ------------------------------------------------------------------ #
@@ -362,25 +360,34 @@ def run_tesseract(img: np.ndarray) -> List[Dict]:
 def run_ocr(img: np.ndarray) -> List[Dict]:
     """
     الدالة الموحدة للـ OCR - تختار أفضل محرك متاح تلقائياً.
-    الأولوية: Google Vision REST > Tesseract (محلي) > EasyOCR
+    الأولوية: EasyOCR (أعلى دقة للبطاقات العربية) > Google Vision REST > Tesseract
     """
-    # 1. Google Vision REST API
+    # 1. EasyOCR (الأعلى دقة ومثبت جودته في استخراج صفات النياق)
+    if _reader is not None:
+        try:
+            blocks = run_easyocr(img)
+            if blocks:
+                return blocks
+        except Exception as e:
+            print(f"EasyOCR fallback: {e}")
+
+    # 2. Google Vision REST API (إن وجد مفتاح صالح)
     if GOOGLE_API_KEY:
         try:
             blocks = run_google_vision_rest(img)
             if blocks:
                 return blocks
         except Exception as e:
-            print(f"Google Vision fallback to local OCR: {e}")
+            print(f"Google Vision fallback: {e}")
 
-    # 2. Tesseract OCR (محلي وسريع ومجاني في السيرفر)
-    blocks = run_tesseract(img)
-    if blocks:
-        return blocks
-
-    # 3. EasyOCR / PaddleOCR (fallback إضافي)
-    if _reader is not None:
-        return run_easyocr(img)
+    # 3. Tesseract OCR (محلي إضافي)
+    if _use_tesseract:
+        try:
+            blocks = run_tesseract(img)
+            if blocks:
+                return blocks
+        except Exception as e:
+            print(f"Tesseract error: {e}")
 
     return []
 
@@ -742,19 +749,30 @@ def extract_camel_data_from_image_sync(image_bytes: bytes) -> Dict[str, Any]:
     if not OCR_AVAILABLE:
         return _simulated_ocr_result()
 
-    # Get preprocessed image variants
+    h, w = img.shape[:2]
+
+    # الخطوة 1: الفحص المباشر على الصورة الأصلية (أسرع بـ 10 أضعاف)
+    blocks = run_ocr(img)
+    if blocks:
+        first_res = parse_camel_blocks(blocks, h, w)
+        valid_attrs = sum(1 for a in ALL_ATTRIBUTES if first_res.get(a, {}).get("value"))
+        if first_res.get("validation_ok") or valid_attrs >= 6:
+            first_res["ocr_engine"] = OCR_ENGINE
+            return first_res
+
+    # الخطوة 2: المعالجة المتقدمة (تباين وتكبير) كـ fallback في حال عدم اكتمال البيانات
     variants = preprocess_image(img)
-
-    # Run OCR on variants
-    all_block_sets = []
+    all_block_sets = [blocks] if blocks else []
     for variant in variants:
-        blocks = run_ocr(variant)
-        all_block_sets.append(blocks)
-        # Google Vision: نتيجة واحدة تكفي (تجنب استهلاك quota)
-        if (_use_google_vision or GOOGLE_API_KEY) and blocks:
-            break
+        v_blocks = run_ocr(variant)
+        if v_blocks:
+            all_block_sets.append(v_blocks)
+            v_res = parse_camel_blocks(v_blocks, variant.shape[0], variant.shape[1])
+            if v_res.get("validation_ok"):
+                v_res["ocr_engine"] = OCR_ENGINE
+                return v_res
 
-    vh, vw = variants[0].shape[:2]
+    vh, vw = variants[0].shape[:2] if variants else (h, w)
     result = merge_block_results(all_block_sets, vh, vw)
     result["ocr_engine"] = OCR_ENGINE
     return result
