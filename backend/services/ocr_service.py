@@ -320,24 +320,65 @@ def run_easyocr(img: np.ndarray) -> List[Dict]:
     return blocks
 
 
+# ------------------------------------------------------------------ #
+# Tesseract OCR (خفيف، مجاني، ومدمج بالسيرفر)                          #
+# ------------------------------------------------------------------ #
+def run_tesseract(img: np.ndarray) -> List[Dict]:
+    try:
+        import pytesseract
+        from pytesseract import Output
+
+        # استخراج الكلمات مع الإحداثيات ونسب الثقة
+        data = pytesseract.image_to_data(img, lang='ara+eng', output_type=Output.DICT)
+        blocks = []
+        n_boxes = len(data['text'])
+        for i in range(n_boxes):
+            text = data['text'][i].strip()
+            conf = float(data['conf'][i])
+            if not text or conf < 20:
+                continue
+
+            x = float(data['left'][i])
+            y = float(data['top'][i])
+            w = float(data['width'][i])
+            h = float(data['height'][i])
+
+            blocks.append({
+                "text": text,
+                "confidence": conf / 100.0,
+                "cx": x + w / 2,
+                "cy": y + h / 2,
+                "x1": x, "y1": y,
+                "x2": x + w, "y2": y + h,
+            })
+
+        blocks.sort(key=lambda b: (b["y1"], b["x1"]))
+        return blocks
+    except Exception as e:
+        print(f"Tesseract OCR error: {e}")
+        return []
+
+
 def run_ocr(img: np.ndarray) -> List[Dict]:
     """
     الدالة الموحدة للـ OCR - تختار أفضل محرك متاح تلقائياً.
-    الأولوية: Google Vision SDK > Google Vision REST > EasyOCR > PaddleOCR
+    الأولوية: Google Vision REST > Tesseract (محلي) > EasyOCR
     """
-    # 1. Google Vision SDK (أسرع وأدق)
-    if _use_google_vision and _vision_client:
-        blocks = run_google_vision(img)
-        if blocks:
-            return blocks
-
-    # 2. Google Vision REST API (بديل بدون service account)
+    # 1. Google Vision REST API
     if GOOGLE_API_KEY:
-        blocks = run_google_vision_rest(img)
-        if blocks:
-            return blocks
+        try:
+            blocks = run_google_vision_rest(img)
+            if blocks:
+                return blocks
+        except Exception as e:
+            print(f"Google Vision fallback to local OCR: {e}")
 
-    # 3. EasyOCR / PaddleOCR (fallback محلي)
+    # 2. Tesseract OCR (محلي وسريع ومجاني في السيرفر)
+    blocks = run_tesseract(img)
+    if blocks:
+        return blocks
+
+    # 3. EasyOCR / PaddleOCR (fallback إضافي)
     if _reader is not None:
         return run_easyocr(img)
 

@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System dependencies for OpenCV
+# System dependencies for OpenCV and Tesseract OCR (Arabic + English)
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libsm6 \
@@ -11,10 +11,12 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libgl1 \
     curl \
+    tesseract-ocr \
+    tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache bust - v3
-ARG CACHE_BUST=3
+# Cache bust - v4
+ARG CACHE_BUST=4
 
 # Install Python dependencies
 COPY requirements.txt .
