@@ -15,15 +15,11 @@ numpy
 discord.py==2.7.1
 
 # ── السحابة ──────────────────────────────────────────
-# Google Cloud Vision API (OCR سريع)
-google-cloud-vision==3.7.2
+# ملاحظة: Google Vision يعمل عبر REST API مباشرة (GOOGLE_VISION_API_KEY)
+# لا يحتاج google-cloud-vision SDK لتجنب تعارض protobuf مع ortools
 
 # Cloudflare R2 / S3-compatible storage
 boto3==1.34.131
 
 # PostgreSQL driver (Supabase)
 psycopg2-binary==2.9.9
-
-# ── EasyOCR (fallback محلي - اختياري) ─────────────────
-# قم بإلغاء التعليق إذا أردت دعم OCR بدون إنترنت:
-# easyocr==1.7.1
