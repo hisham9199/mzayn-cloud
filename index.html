@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام تحليل النياق واختيار أفضل نتيجة لبطولات الانتظار</title>
+  <meta name="description" content="نظام متقدم لتحليل صور نياق المزاين، استخراج وتدقيق أرقام الصفات، حساب نتائج التباعد والتناسق وبونص الراعي، وتوليد التشكيلات الفائزة للبطولات.">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/web/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+  <!-- Header Section -->
+  <header>
+    <div class="header-container">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <i class="fa-solid fa-trophy"></i>
+        </div>
+        <div class="logo-text">
+          <h1>مُحَلِّل بطولات النياق والتنافسية</h1>
+          <p>نظام التحليل الحسابي والتدقيق الرقمي لاختيار النوافل الفائزة</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="load-samples-btn" class="btn">
+          <i class="fa-solid fa-vial-circle-check"></i> تحميل صور ونياق نموذجية
+        </button>
+        <button id="add-camel-btn" class="btn btn-primary">
+          <i class="fa-solid fa-plus"></i> إضافة ناقة جديدة
+        </button>
+        <button id="clear-all-btn" class="btn btn-danger">
+          <i class="fa-solid fa-trash-can"></i> مسح الكل
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <main class="main-wrapper">
+
+    <!-- Section 1: Upload & Image OCR / Manual Data Entry -->
+    <section class="card-panel">
+      <div class="section-title">
+        <h2><i class="fa-solid fa-cloud-arrow-up"></i> 1. رفع صور النياق وقراءة البيانات</h2>
+        <span class="badge-count" id="camels-count-badge">0 نياق مسجلة</span>
+      </div>
+
+      <div class="upload-grid">
+        <!-- Dropzone -->
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">
+            <i class="fa-solid fa-layer-group"></i>
+          </div>
+          <h3>اسحب وأسقط مجموعة صور (من 1 إلى 100 صورة) هنا دفعة واحدة</h3>
+          <p>أو انقر لاختيار عدة صور معاً أو رفع مجلد صور كامل من جهازك (JPG, PNG, WEBP)</p>
+          
+          <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+          <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem;">
+            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+              <i class="fa-solid fa-images"></i> اختير صور متعددة
+            </button>
+            <button class="btn" style="border-color: var(--gold-primary); color: var(--gold-light);" onclick="document.getElementById('folder-input').click()">
+              <i class="fa-solid fa-folder-tree"></i> رفع مجلد صور كامل
+            </button>
+          </div>
+
+          <!-- Upload Progress Indicator -->
+          <div id="upload-progress-container" style="display: none; width: 100%; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gold-light); margin-bottom: 0.3rem;">
+              <span id="upload-status-text">جاري معالجة واستخراج بيانات الصور...</span>
+              <span id="upload-percent-text">0%</span>
+            </div>
+            <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+              <div id="upload-progress-bar" style="width: 0%; height: 100%; background: var(--gold-gradient); transition: width 0.2s ease;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Inputs & Global Controls -->
+        <div class="quick-inputs">
+          <div>
+            <h3 style="color: var(--gold-light); font-size: 1.05rem; margin-bottom: 0.8rem;">
+              <i class="fa-solid fa-sliders"></i> إعدادات وسيناريوهات البطولة
+            </h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="sponsor-scenario">سيناريو بونص الراعي المفترض</label>
+                <select id="sponsor-scenario" class="form-control">
+                  <option value="auto">تلقائي (حسب بيانات الناقة)</option>
+                  <option value="1.00">بدون بونص راعي (1.00x)</option>
+                  <option value="1.05">بونص راعي برونزي (1.05x)</option>
+                  <option value="1.10">بونص راعي فضي (1.10x)</option>
+                  <option value="1.15">بونص راعي ذهبي (1.15x)</option>
+                  <option value="1.20">بونص راعي ماسي (1.20x)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="squad-size">حجم تشكيلة البطولة (من 5 إلى 100 متن)</label>
+                <div style="display: flex; gap: 0.4rem;">
+                  <select id="squad-size" class="form-control" style="flex: 2;">
+                    <option value="1">1 (فردي)</option>
+                    <option value="3">3 نياق</option>
+                    <option value="5" selected>5 متن</option>
+                    <option value="10">10 متن</option>
+                    <option value="15">15 متن</option>
+                    <option value="20">20 متن</option>
+                    <option value="30">30 متن</option>
+                    <option value="50">50 متن</option>
+                    <option value="100">100 متن</option>
+                    <option value="custom">عدد مخصص...</option>
+                  </select>
+                  <input type="number" id="custom-squad-size" class="form-control" min="1" max="100" placeholder="أدخل العدد" style="display: none; flex: 1;">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: rgba(212,175,55,0.06); padding: 0.75rem; border-radius: var(--radius-sm); border-right: 3px solid var(--gold-primary);">
+            <p style="font-size: 0.82rem; color: var(--text-muted);">
+              <i class="fa-solid fa-calculator"></i> <strong>المعادلة الرياضية الرسمية:</strong><br>
+              <code style="color: var(--gold-light);">النتيجة النهائية = مجموع الصفات × بونص التباعد × بونص التناسق × بونص الراعي</code>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Camel Cards Grid & Attribute Inspection -->
+    <section class="card-panel">
+      <div class="section-title">
+        <h2><i class="fa-solid fa-camel"></i> 2. قائمة النياق والبيانات التفصيلية المستخرجة</h2>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">انقر على "تعديل وتدقيق" لمراجعة أو إضافة أرقام غير واضحة</span>
+      </div>
+
+      <div class="camels-grid" id="camels-grid">
+        <!-- Camel Cards will be dynamically rendered here -->
+      </div>
+    </section>
+
+    <!-- Section 3: Official Comparative Ranking Table -->
+    <section class="card-panel">
+      <div class="section-title">
+        <h2><i class="fa-solid fa-list-ol"></i> 3. جدول الترتيب المقارن النهائي النوافل</h2>
+        <div style="display: flex; gap: 0.5rem;">
+          <span class="tag-badge tag-excellent">التنافس يعتمد على النتيجة النهائية</span>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>الترتيب</th>
+              <th>الناقة</th>
+              <th>السلالة / الجنس</th>
+              <th>مجموع الصفات</th>
+              <th>التباعد</th>
+              <th>التناسق</th>
+              <th>بونص الراعي</th>
+              <th>النتيجة النهائية</th>
+              <th>التقييم العام</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-table-body">
+            <!-- Ranking Rows Rendered Here -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 4: Tournament Squad Optimizer -->
+    <section class="card-panel">
+      <div class="section-title">
+        <h2><i class="fa-solid fa-users-gear"></i> 4. مكتشف أفضل تشكيلة للبطولة</h2>
+        <span style="font-size: 0.85rem; color: var(--gold-light);" id="squad-title-indicator">تشكيلة 5 متن</span>
+      </div>
+
+      <div class="squad-options-grid" id="squad-options-grid">
+        <!-- Squad options dynamically generated -->
+      </div>
+    </section>
+
+    <!-- Section 5: Official Report Generator -->
+    <section class="card-panel">
+      <div class="section-title">
+        <h2><i class="fa-solid fa-file-contract"></i> 5. التقرير الرسمي النهائي للبطولة</h2>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button id="share-squad-btn" class="btn" style="border-color: var(--accent-green); color: var(--accent-green);">
+            <i class="fa-brands fa-whatsapp"></i> مشاركة أرقام التشكيلة
+          </button>
+          <button id="copy-report-btn" class="btn">
+            <i class="fa-solid fa-copy"></i> نسخ التقرير النصي
+          </button>
+          <button id="print-report-btn" class="btn btn-primary">
+            <i class="fa-solid fa-print"></i> طباعة / حفظ PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="report-container" id="report-output">
+        <!-- Text Report Rendered Here -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: Camel Attribute Editor & Verification Audit -->
+  <div class="modal-overlay" id="editor-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">تعديل وتدقيق بيانات الناقة</h3>
+        <button class="close-btn" id="modal-close-btn">&times;</button>
+      </div>
+
+      <form id="camel-editor-form">
+        <input type="hidden" id="edit-camel-id">
+
+        <h4 style="color: var(--gold-primary); margin-bottom: 0.8rem; font-size: 0.95rem;">
+          <i class="fa-solid fa-id-card"></i> البيانات التعريفية
+        </h4>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>اسم الناقة</label>
+            <input type="text" id="edit-name" class="form-control" required placeholder="مثال: صاد 61">
+          </div>
+          <div class="form-group">
+            <label>رقم الناقة</label>
+            <input type="text" id="edit-number" class="form-control" placeholder="61">
+          </div>
+          <div class="form-group">
+            <label>السلالة</label>
+            <input type="text" id="edit-breed" class="form-control" placeholder="حمر / صفر / مجاهيم / شعل">
+          </div>
+          <div class="form-group">
+            <label>الجنس والعمر</label>
+            <input type="text" id="edit-gender-age" class="form-control" placeholder="أنثى - بكرة / جذعة">
+          </div>
+        </div>
+
+        <h4 style="color: var(--gold-primary); margin: 1rem 0 0.8rem; font-size: 0.95rem;">
+          <i class="fa-solid fa-square-poll-vertical"></i> قيم المواصفات الـ 7 المستخرجة من الرسم (الأنف، الرأس، الرموش، الأذن، السنام، الرقبة، الشفاه)
+        </h4>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>الأنف <span id="val-nose" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-nose" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-nose')">غير واضح</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>الرأس <span id="val-head" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-head" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-head')">غير واضح</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>الرموش <span id="val-eyelashes" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-eyelashes" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-eyelashes')">غير واضح</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>الأذن <span id="val-ears" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-ears" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-ears')">غير واضح</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>السنام <span id="val-hump" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-hump" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-hump')">غير واضح</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>الرقبة <span id="val-neck" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-neck" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-neck')">غير واضح</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>الشفاه / الشفايف <span id="val-lips" style="color: var(--gold-primary); font-weight: bold;"></span></label>
+            <div style="display: flex; gap: 0.3rem;">
+              <input type="number" id="edit-lips" class="form-control" min="0" max="999" placeholder="غير واضح">
+              <button type="button" class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="app.setUnclear('edit-lips')">غير واضح</button>
+            </div>
+          </div>
+        </div>
+
+        <h4 style="color: var(--gold-primary); margin: 1rem 0 0.8rem; font-size: 0.95rem;">
+          <i class="fa-solid fa-percent"></i> البونص والمعاملات الإضافية
+        </h4>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>بونص التباعد</label>
+            <input type="number" step="0.01" id="edit-spacing-bonus" class="form-control" placeholder="مثال: 1.08">
+          </div>
+          <div class="form-group">
+            <label>بونص التناسق (رقمي)</label>
+            <input type="number" step="0.01" id="edit-consistency-bonus" class="form-control" placeholder="تلقائي إن ترك فارغاً">
+          </div>
+          <div class="form-group">
+            <label>بونص الراعي</label>
+            <input type="number" step="0.01" id="edit-sponsor-bonus" class="form-control" placeholder="مثال: 1.10">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.8rem; margin-top: 1.5rem;">
+          <button type="button" class="btn" id="cancel-edit-btn">إلغاء</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> حفظ وتحديث الحسابات</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Custom Delete Confirmation -->
+  <div class="modal-overlay" id="delete-confirm-modal">
+    <div class="modal-content" style="max-width: 480px; text-align: center;">
+      <div style="font-size: 3.5rem; color: var(--accent-red); margin-bottom: 0.8rem;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h3 id="delete-modal-title" style="color: var(--gold-light); font-size: 1.25rem; margin-bottom: 0.5rem;">تأكيد المسح</h3>
+      <p id="delete-modal-msg" style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 1.5rem;">هل أنت تأكد من إجراء هذا الحذف؟</p>
+      
+      <div style="display: flex; justify-content: center; gap: 0.8rem;">
+        <button type="button" class="btn" id="delete-cancel-btn">إلغاء</button>
+        <button type="button" class="btn btn-danger" id="delete-confirm-btn" style="background: var(--accent-red); color: #fff; font-weight: bold;">
+          <i class="fa-solid fa-trash-can"></i> نعم، احذف الآن
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

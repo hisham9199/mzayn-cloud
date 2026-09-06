@@ -1,0 +1,29 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sqlalchemy==2.0.30
+python-multipart==0.0.9
+pillow==10.3.0
+opencv-python-headless==4.9.0.80
+ortools==9.10.4067
+openpyxl==3.1.2
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+aiofiles==23.2.1
+pypdf2==3.0.1
+numpy
+discord.py==2.7.1
+
+# ── السحابة ──────────────────────────────────────────
+# Google Cloud Vision API (OCR سريع)
+google-cloud-vision==3.7.2
+
+# Cloudflare R2 / S3-compatible storage
+boto3==1.34.131
+
+# PostgreSQL driver (Supabase)
+psycopg2-binary==2.9.9
+
+# ── EasyOCR (fallback محلي - اختياري) ─────────────────
+# قم بإلغاء التعليق إذا أردت دعم OCR بدون إنترنت:
+# easyocr==1.7.1

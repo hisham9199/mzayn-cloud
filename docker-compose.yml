@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: mzayn_db
+    environment:
+      POSTGRES_USER: mzayn
+      POSTGRES_PASSWORD: mzayn2024
+      POSTGRES_DB: mzayn_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mzayn -d mzayn_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mzayn_backend
+    environment:
+      DATABASE_URL: postgresql://mzayn:mzayn2024@db:5432/mzayn_db
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+      - backups_data:/app/backups
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mzayn_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+volumes:
+  postgres_data:
+  uploads_data:
+  backups_data:
