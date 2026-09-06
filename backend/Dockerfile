@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache bust - v2
-ARG CACHE_BUST=2
+# Cache bust - v3
+ARG CACHE_BUST=3
 
 # Install Python dependencies
 COPY requirements.txt .
