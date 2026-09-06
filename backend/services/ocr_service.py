@@ -19,42 +19,46 @@ _reader = None
 OCR_AVAILABLE = False
 OCR_ENGINE = "none"
 
-# --- Google Cloud Vision API (الأولوية الأولى) ---
+# --- Google Cloud Vision API (الأولوية الأولى إذا كان مفعلاً) ---
 _vision_client = None
 _use_google_vision = False
 
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
 
-if GOOGLE_CREDENTIALS or GOOGLE_API_KEY:
-    try:
-        from google.cloud import vision
-        _vision_client = vision.ImageAnnotatorClient()
-        _use_google_vision = True
-        OCR_AVAILABLE = True
-        OCR_ENGINE = "google_vision"
-        print("✅ Google Cloud Vision API initialized successfully")
-    except Exception as e:
-        print(f"⚠️  Google Vision not available: {e}")
+# --- Tesseract OCR check (خفيف، مجاني، ومدمج في الحاوية) ---
+_use_tesseract = False
+try:
+    import pytesseract
+    # Test if tesseract is installed and available in PATH
+    pytesseract.get_tesseract_version()
+    _use_tesseract = True
+    OCR_AVAILABLE = True
+    OCR_ENGINE = "tesseract"
+    print("✅ Tesseract OCR initialized successfully")
+except Exception as e:
+    print(f"⚠️  Tesseract not available: {e}")
 
-# --- EasyOCR fallback (إذا لم يكن Google Vision متاحاً) ---
-if not _use_google_vision:
-    try:
-        import easyocr
-        _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
-        OCR_AVAILABLE = True
+# --- EasyOCR fallback (إذا توفر) ---
+try:
+    import easyocr
+    _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
+    OCR_AVAILABLE = True
+    if not OCR_ENGINE or OCR_ENGINE == "none":
         OCR_ENGINE = "easyocr"
-        print("✅ EasyOCR initialized (fallback mode)")
-    except Exception as e:
-        print(f"⚠️  EasyOCR initialization error: {e}")
-        try:
-            from paddleocr import PaddleOCR
-            _reader = PaddleOCR(use_angle_cls=True, lang='ar', show_log=False)
-            OCR_AVAILABLE = True
-            OCR_ENGINE = "paddle"
-            print("✅ PaddleOCR initialized (fallback mode)")
-        except Exception as e2:
-            print(f"⚠️  PaddleOCR not available: {e2}")
+    print("✅ EasyOCR initialized")
+except Exception as e:
+    pass
+
+# Always enable OCR if any engine or Google API Key exists
+if GOOGLE_API_KEY or GOOGLE_CREDENTIALS or _use_tesseract or _reader is not None:
+    OCR_AVAILABLE = True
+    if GOOGLE_API_KEY or GOOGLE_CREDENTIALS:
+        OCR_ENGINE = "google_vision"
+    elif _use_tesseract:
+        OCR_ENGINE = "tesseract"
+    elif _reader is not None:
+        OCR_ENGINE = "easyocr"
 
 
 # ------------------------------------------------------------------ #

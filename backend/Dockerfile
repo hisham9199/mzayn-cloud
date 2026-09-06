@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache bust - v4
-ARG CACHE_BUST=4
+# Cache bust - v5
+ARG CACHE_BUST=5
 
 # Install Python dependencies
 COPY requirements.txt .
