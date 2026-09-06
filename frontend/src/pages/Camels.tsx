@@ -799,13 +799,18 @@ export default function Camels() {
                 qc.invalidateQueries('camels')
                 qc.invalidateQueries('dashboard')
                 toast.success('تم حذف الناقة')
+                return
             },
-            onError: () => toast.error('فشل حذف الناقة')
+            onError: () => {
+                toast.error('فشل حذف الناقة')
+            }
         }
     )
 
     const bulkDeleteMut = useMutation(
-        async () => camelApi.bulkDelete({ camel_ids: Array.from(selectedIds) }),
+        async () => {
+            return await camelApi.bulkDelete({ camel_ids: Array.from(selectedIds) })
+        },
         {
             onSuccess: () => {
                 qc.invalidateQueries('camels')
@@ -813,8 +818,11 @@ export default function Camels() {
                 qc.invalidateQueries('stables')
                 toast.success(`تم حذف ${selectedIds.size} ناقة بنجاح`)
                 setSelectedIds(new Set())
+                return
             },
-            onError: () => toast.error('فشل حذف النياق')
+            onError: () => {
+                toast.error('فشل حذف النياق')
+            }
         }
     )
 
