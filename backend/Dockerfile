@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System dependencies for OpenCV only (no heavy ML libs)
+# System dependencies for OpenCV
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libsm6 \
@@ -13,9 +13,13 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Cache bust - v2
+ARG CACHE_BUST=2
+
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
