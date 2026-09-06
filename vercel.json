@@ -12,7 +12,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://your-railway-app.railway.app/$1"
+      "dest": "https://mzayn-cloud-production.up.railway.app/$1"
     },
     {
       "src": "/(.*)",
@@ -20,6 +20,6 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://your-railway-app.railway.app"
+    "VITE_API_URL": "https://mzayn-cloud-production.up.railway.app"
   }
 }
