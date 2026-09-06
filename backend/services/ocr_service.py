@@ -30,7 +30,6 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
 _use_tesseract = False
 try:
     import pytesseract
-    # Test if tesseract is installed and available in PATH
     pytesseract.get_tesseract_version()
     _use_tesseract = True
     OCR_AVAILABLE = True
@@ -44,21 +43,18 @@ try:
     import easyocr
     _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
     OCR_AVAILABLE = True
-    if not OCR_ENGINE or OCR_ENGINE == "none":
+    if not _use_tesseract:
         OCR_ENGINE = "easyocr"
     print("✅ EasyOCR initialized")
 except Exception as e:
     pass
 
-# Always enable OCR if any engine or Google API Key exists
-if GOOGLE_API_KEY or GOOGLE_CREDENTIALS or _use_tesseract or _reader is not None:
+# Check if any engine is ready
+if _use_tesseract or _reader is not None:
     OCR_AVAILABLE = True
-    if GOOGLE_API_KEY or GOOGLE_CREDENTIALS:
-        OCR_ENGINE = "google_vision"
-    elif _use_tesseract:
-        OCR_ENGINE = "tesseract"
-    elif _reader is not None:
-        OCR_ENGINE = "easyocr"
+elif GOOGLE_API_KEY:
+    OCR_AVAILABLE = True
+    OCR_ENGINE = "google_vision"
 
 
 # ------------------------------------------------------------------ #
@@ -629,11 +625,6 @@ def preprocess_image(img: np.ndarray) -> List[np.ndarray]:
     up2x = cv2.resize(img, (int(w * 2), int(h * 2)), interpolation=cv2.INTER_LANCZOS4)
     variants.append(up2x)
 
-    # Google Vision لا يحتاج variants متعددة - إرجاع variant واحد فقط
-    if _use_google_vision or GOOGLE_API_KEY:
-        return variants
-
-    # EasyOCR يستفيد من variants متعددة
     # Variant 2: Upscaled + contrast enhanced (CLAHE on LAB)
     lab = cv2.cvtColor(up2x, cv2.COLOR_BGR2LAB)
     l_ch, a_ch, b_ch = cv2.split(lab)
