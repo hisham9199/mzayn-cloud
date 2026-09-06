@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache bust - v8
-ARG CACHE_BUST=8
+# Cache bust - v9
+ARG CACHE_BUST=9
 
 # Install all Python dependencies in a single unified resolution pass using CPU PyTorch
 COPY requirements.txt .
