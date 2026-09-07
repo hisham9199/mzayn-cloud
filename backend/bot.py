@@ -753,6 +753,40 @@ async def on_ready():
     )
 
 
+# ------------------------------------------------------------------ #
+# Web Portal Link View (لوحة الدخول المباشر للموقع الإلكتروني)         #
+# ------------------------------------------------------------------ #
+
+class WebPortalView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(
+            ui.Button(
+                label="🌐 الدخول إلى منصة مزاين الإلكترونية",
+                style=discord.ButtonStyle.link,
+                url="http://168.119.170.236",
+                emoji="🚀"
+            )
+        )
+
+
+@bot.tree.command(name="تثبيت_لوحة_الموقع", description="إرسال لوحة وبانر الدخول المباشر إلى المنصة الإلكترونية")
+async def setup_web_panel_slash(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🐪 بوابة منصة مزاين الإلكترونية",
+        description=(
+            "أهلاً بك في البوابة الإلكترونية لنظام مزاين.\n\n"
+            "اضغط على الزر أدناه لتسجيل الدخول بحسابك في الديسكورد.\n"
+            "سيتعرف النظام تلقائياً على رتبتك وصلاحياتك (مدير / عضو) ويفتح لك لوحتك الخاصة فوراً!"
+        ),
+        color=0x5865F2
+    )
+    embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/3069/3069172.png")
+    embed.add_field(name="🔗 رابط المنصة", value="[اضغط هنا لفتح الموقع مباشرة](http://168.119.170.236)", inline=False)
+    embed.set_footer(text="منصة مزاين الذكية • مسجلة ومحمية برتب الديسكورد")
+    await interaction.response.send_message(embed=embed, view=WebPortalView())
+
+
 @bot.tree.command(name="تثبيت_اللوحة", description="إرسال وتثبيت لوحة التحكم التفاعلية في روم حاسبة البطولات")
 async def setup_panel_slash(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -786,7 +820,31 @@ async def on_message(message: discord.Message):
 
     content_clean = message.content.strip().lower()
 
-    # إذا أرسل المستخدم أي عبارة لتثبيت اللوحة
+    # إذا أرسل المستخدم عبارة لتثبيت لوحة الموقع المباشرة
+    if content_clean in [
+        "!موقع", "موقع", "/موقع", "!رابط", "رابط", "/رابط", "!الموقع", "الموقع",
+        "!لوحة_الموقع", "لوحة الموقع", "/تثبيت_لوحة_الموقع"
+    ]:
+        embed = discord.Embed(
+            title="🐪 بوابة منصة مزاين الإلكترونية",
+            description=(
+                "أهلاً بك في البوابة الإلكترونية لنظام مزاين.\n\n"
+                "اضغط على الزر أدناه لتسجيل الدخول بحسابك في الديسكورد.\n"
+                "سيتعرف النظام تلقائياً على رتبتك وصلاحياتك (مدير / عضو) ويفتح لك لوحتك الخاصة فوراً!"
+            ),
+            color=0x5865F2
+        )
+        embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/3069/3069172.png")
+        embed.add_field(name="🔗 رابط المنصة", value="[اضغط هنا لفتح الموقع مباشرة](http://168.119.170.236)", inline=False)
+        embed.set_footer(text="منصة مزاين الذكية • مسجلة ومحمية برتب الديسكورد")
+        try:
+            await message.channel.send(embed=embed, view=WebPortalView())
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    # إذا أرسل المستخدم أي عبارة لتثبيت اللوحة الرئيسية
     if content_clean in [
         "/تثبيت_اللوحة", "!تثبيت_اللوحة", "تثبيت_اللوحة", "تثبيت اللوحة",
         "!panel", "!setup", "/setup", "/panel", "!لوحة", "لوحة", "!تثبيت", "/تثبيت"
