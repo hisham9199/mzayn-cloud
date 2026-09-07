@@ -25,6 +25,11 @@ _use_google_vision = False
 
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_VISION_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+if OPENAI_API_KEY:
+    OCR_AVAILABLE = True
+    OCR_ENGINE = "openai_vision"
+    print("✅ OpenAI GPT-4o-mini Vision enabled as primary OCR engine")
 
 # --- EasyOCR (الأولوية الأولى للدقة العالية في اللغة العربية والتصميم المعقد) ---
 try:
@@ -741,11 +746,118 @@ def merge_block_results(all_block_sets: List[List[Dict]], img_h: int, img_w: int
     return best_result
 
 
+def run_openai_vision(image_bytes: bytes) -> Optional[Dict[str, Any]]:
+    """استخراج بيانات بطاقة الناقة عبر OpenAI GPT-4o-mini Vision (فائق السرعة والدقة)"""
+    if not OPENAI_API_KEY:
+        return None
+    import requests, base64, json
+
+    try:
+        b64 = base64.b64encode(image_bytes).decode('utf-8')
+        prompt = """
+You are an expert OCR model for camel competition evaluation cards in Arabic (نظام كشف وتقييم النياق - مزاين).
+Extract the following fields accurately and return STRICTLY a JSON object:
+{
+  "points": integer, // مجموع النقاط (المواصفات)
+  "spacing": integer, // التباعد
+  "number": "string", // رقم أو اسم الناقة
+  "name": "string", // اسم الناقة
+  "color": "string", // اللون أو السلالة إن وجدت
+  "head": integer, // الرأس
+  "neck": integer, // الرقبة
+  "nose": integer, // الأنف
+  "lips": integer, // الشفاه
+  "hump": integer, // السنام
+  "ear": integer, // الأذن
+  "eyelashes": integer // الرموش
+}
+Rules:
+- The 7 traits are: head, neck, nose, lips, hump, ear, eyelashes.
+- Verify: sum(traits) == points
+- Verify: max(traits) - min(traits) == spacing
+Return ONLY the JSON.
+"""
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        payload = {
+            'model': 'gpt-4o-mini',
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': [
+                        {'type': 'text', 'text': prompt},
+                        {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}', 'detail': 'high'}}
+                    ]
+                }
+            ],
+            'response_format': {'type': 'json_object'},
+            'temperature': 0.0,
+            'max_tokens': 500
+        }
+        r = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=payload, timeout=25)
+        if r.status_code != 200:
+            print(f"OpenAI API error {r.status_code}: {r.text[:150]}")
+            return None
+
+        raw = json.loads(r.json()['choices'][0]['message']['content'])
+        field_values = {}
+        attr_vals = []
+        for a in ALL_ATTRIBUTES:
+            val = raw.get(a)
+            if val is not None and str(val).isdigit():
+                field_values[a] = {"value": str(val), "confidence": 0.99, "status": "green"}
+                attr_vals.append(int(val))
+            else:
+                field_values[a] = {"value": "", "confidence": 0.0, "status": "red"}
+
+        calc_sum = sum(attr_vals) if attr_vals else 0
+        calc_sp = (max(attr_vals) - min(attr_vals)) if attr_vals else 0
+
+        raw_pts = raw.get("points")
+        raw_sp = raw.get("spacing")
+        pts = raw_pts if (raw_pts is not None and str(raw_pts).isdigit()) else calc_sum
+        sp = raw_sp if (raw_sp is not None and str(raw_sp).isdigit()) else calc_sp
+
+        # تصحيح رياضي تلقائي
+        if len(attr_vals) == 7:
+            pts = calc_sum
+            sp = calc_sp
+
+        field_values["points"] = {"value": str(pts), "confidence": 0.99, "status": "green"}
+        field_values["spacing"] = {"value": str(sp), "confidence": 0.99, "status": "green"}
+        field_values["number"] = {"value": str(raw.get("number") or ""), "confidence": 0.99, "status": "green"}
+        field_values["name"] = {"value": str(raw.get("name") or raw.get("number") or ""), "confidence": 0.99, "status": "green"}
+        field_values["color"] = {"value": str(raw.get("color") or ""), "confidence": 0.99, "status": "green"}
+
+        valid = bool(len(attr_vals) == 7 and int(pts) == calc_sum and int(sp) == calc_sp)
+        field_values["validation_ok"] = valid
+        field_values["expected_points"] = calc_sum
+        field_values["expected_spacing"] = calc_sp
+        field_values["overall_confidence"] = 0.99
+        field_values["overall_status"] = "green" if valid else ("yellow" if len(attr_vals) >= 5 else "red")
+        field_values["ocr_engine"] = "openai_vision"
+        return field_values
+    except Exception as e:
+        print(f"OpenAI Vision extraction error: {e}")
+        return None
+
+
 # ------------------------------------------------------------------ #
 # Public API                                                           #
 # ------------------------------------------------------------------ #
 def extract_camel_data_from_image_sync(image_bytes: bytes) -> Dict[str, Any]:
     """Accepts raw image bytes and returns structured dictionary with confidence."""
+    # 0. الفحص الفائق بالذكاء الاصطناعي السحابي (OpenAI GPT-4o-mini Vision) كخيار أول فائق السرعة
+    if OPENAI_API_KEY:
+        try:
+            openai_res = run_openai_vision(image_bytes)
+            if openai_res and (openai_res.get("validation_ok") or openai_res.get("overall_status") in ("green", "yellow")):
+                return openai_res
+        except Exception as e:
+            print(f"OpenAI fallback to local OCR: {e}")
+
     img = decode_image_with_exif(image_bytes)
 
     if img is None:

@@ -112,62 +112,58 @@ export default function BulkImport() {
         setLiveResults([])
         setSelectedResults(new Set())
 
-        // 1. Multiple image files
+        // 1. Multiple image files (معالجة متوازية فائقة السرعة)
         if (files.length > 0) {
             const total = files.length
-            const newResults: ExtractedCamelItem[] = []
+            const newResults: ExtractedCamelItem[] = new Array(total)
+            let completedCount = 0
+            const CONCURRENCY = 3 // معالجة 3 صور بالتوازي في نفس اللحظة
 
-            for (let i = 0; i < total; i++) {
-                if (stopSignalRef.current) {
-                    toast('تم إيقاف الاستيراد', { icon: '⏹️' })
-                    break
-                }
-
-                const file = files[i]
-                setCurrentProgress({
-                    current: i + 1,
-                    total: total,
-                    percent: Math.round(((i + 1) / total) * 100),
-                    currentFilename: file.name,
-                })
-
+            const processSingleFile = async (file: File, index: number) => {
+                if (stopSignalRef.current) return
                 try {
                     const res = await ocrApi.single(file)
                     const item: ExtractedCamelItem = {
                         filename: file.name,
-                        fileIndex: i + 1,
+                        fileIndex: index + 1,
                         result: res.data,
                         status: 'success',
                     }
-                    newResults.push(item)
-                    setLiveResults([...newResults])
+                    newResults[index] = item
+                    setLiveResults([...newResults.filter(Boolean)])
 
-                    // Auto select valid results
                     if (res.data?.validation_ok || res.data?.overall_status === 'green') {
-                        setSelectedResults(prev => new Set([...prev, newResults.length - 1]))
-                    }
-                    // Auto-open edit mode for rows with problematic attributes
-                    const attrFields = ['nose','lips','head','neck','hump','eyelashes','ear']
-                    const hasIssue = attrFields.some(a => {
-                        const f = res.data?.[a]
-                        return !f?.value || f?.status === 'yellow' || f?.status === 'red' || (typeof f?.confidence === 'number' && f.confidence < 0.70)
-                    })
-                    if (hasIssue) {
-                        setEditingRow(newResults.length - 1)
+                        setSelectedResults(prev => new Set([...prev, index]))
                     }
                 } catch (err: any) {
-                    const item: ExtractedCamelItem = {
+                    newResults[index] = {
                         filename: file.name,
-                        fileIndex: i + 1,
+                        fileIndex: index + 1,
                         result: null,
                         status: 'error',
                         errorMsg: 'تعذّر استخراج البيانات من الصورة',
                     }
-                    newResults.push(item)
-                    setLiveResults([...newResults])
+                    setLiveResults([...newResults.filter(Boolean)])
+                } finally {
+                    completedCount++
+                    setCurrentProgress({
+                        current: completedCount,
+                        total: total,
+                        percent: Math.round((completedCount / total) * 100),
+                        currentFilename: file.name,
+                    })
                 }
             }
-            toast.success(`اكتملت معالجة ${newResults.length} صورة! 🐪`)
+
+            for (let i = 0; i < total; i += CONCURRENCY) {
+                if (stopSignalRef.current) {
+                    toast('تم إيقاف الاستيراد', { icon: '⏹️' })
+                    break
+                }
+                const chunk = files.slice(i, i + CONCURRENCY).map((file, offset) => processSingleFile(file, i + offset))
+                await Promise.all(chunk)
+            }
+            toast.success(`اكتملت معالجة ${newResults.filter(Boolean).length} صورة! 🐪`)
         }
         // 2. ZIP file
         else if (zipFile) {

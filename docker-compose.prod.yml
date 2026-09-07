@@ -35,10 +35,11 @@ services:
     container_name: mzayn_backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-MzaYn@2025!}@db:5432/mzayn_db
+      DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-Mzayn2025SecretPass}@db:5432/mzayn_db
       UPLOAD_DIR: /app/uploads
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_VISION_API_KEY: ${GOOGLE_VISION_API_KEY:-}
     volumes:
       - uploads_data:/app/uploads
@@ -58,10 +59,11 @@ services:
     container_name: mzayn_celery
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-MzaYn@2025!}@db:5432/mzayn_db
+      DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-Mzayn2025SecretPass}@db:5432/mzayn_db
       UPLOAD_DIR: /app/uploads
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
@@ -87,6 +89,7 @@ services:
     environment:
       DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-Mzayn2025SecretPass}@db:5432/mzayn_db
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       UPLOAD_DIR: /app/uploads
     volumes:
       - uploads_data:/app/uploads
