@@ -56,6 +56,57 @@ def get_user_stable(db: Session, user_id: str) -> Optional[Stable]:
     return db.query(Stable).filter(Stable.discord_user_id == str(user_id)).first()
 
 
+async def get_or_create_stable_thread(channel, user, stable: Stable) -> discord.Thread:
+    """البحث عن شات خاص للمنقية أو إنشاؤه تلقائياً"""
+    thread_name = f"🔒-{stable.name}"
+
+    # 1. فحص الثردات النشطة
+    if hasattr(channel, 'threads'):
+        for t in channel.threads:
+            if t.name == thread_name and not t.archived:
+                try:
+                    await t.add_user(user)
+                except Exception:
+                    pass
+                return t
+
+    # 2. إنشاء ثرد جديد (خاص أو عام)
+    target_thread = None
+    try:
+        target_thread = await channel.create_thread(
+            name=thread_name,
+            type=discord.ChannelType.private_thread,
+            auto_archive_duration=1440
+        )
+    except Exception:
+        target_thread = await channel.create_thread(
+            name=thread_name,
+            type=discord.ChannelType.public_thread,
+            auto_archive_duration=1440
+        )
+
+    try:
+        await target_thread.add_user(user)
+    except Exception:
+        pass
+
+    # إرسال رسالة ترحيبية داخل الثرد مع لوحة التحكم
+    welcome_embed = discord.Embed(
+        title=f"🔒 شات منقية: {stable.name}",
+        description=(
+            f"مرحباً بك يا {user.mention} في غرفتك الخاصة!\n\n"
+            "**📸 ارفع صور كشوفات نياقك هنا مباشرة:**\n"
+            "• أرسل صورة أو ألبوم صور (10 أو 30 صورة معاً) أو ملف ZIP.\n"
+            "• سيقوم البوت باستخراج نقاط وصفات النياق وحفظها تلقائياً.\n\n"
+            "🚀 بعد الانتهاء اضغط زر **حساب أفضل تشكيلة للبطولة** لاستخراج النتيجة المثالية!"
+        ),
+        color=0x16A34A
+    )
+    welcome_embed.set_footer(text="نظام مزاين الذكي • سرية وأمان تام")
+    await target_thread.send(embed=welcome_embed, view=MainControlView())
+    return target_thread
+
+
 # ------------------------------------------------------------------ #
 # Modals (النوافذ المنبثقة التفاعلية)                                  #
 # ------------------------------------------------------------------ #
@@ -87,26 +138,17 @@ class RegisterStableModal(ui.Modal, title="🏷️ تسجيل أو تعديل ا
                     )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                     return
-                old_name = user_stable.name
                 user_stable.name = name_val
                 user_stable.discord_username = username
                 db.commit()
-                embed = discord.Embed(
-                    title="✅ تم تحديث اسم المنقية بنجاح!",
-                    description=f"تم تعديل اسم منقيتك من **{old_name}** إلى **{name_val}**.\n\nاضغط الآن على **🔒 فتح شات منقيتي الخاص** لرفع نياقك بسرية تامة!",
-                    color=0x16A34A
-                )
+                active_stable = user_stable
             else:
                 if existing_stable_with_name:
                     if not existing_stable_with_name.discord_user_id or existing_stable_with_name.discord_user_id == user_id:
                         existing_stable_with_name.discord_user_id = user_id
                         existing_stable_with_name.discord_username = username
                         db.commit()
-                        embed = discord.Embed(
-                            title="🎉 تم ربط المنقية بحسابك بنجاح!",
-                            description=f"تم ربط منقية **{name_val}** بحسابك بنجاح.\n\nاضغط الآن على **🔒 فتح شات منقيتي الخاص** لرفع صور نياقك بسرية تامة!",
-                            color=0x16A34A
-                        )
+                        active_stable = existing_stable_with_name
                     else:
                         embed = discord.Embed(
                             title="❌ اسم المنقية مستخدم",
@@ -124,11 +166,21 @@ class RegisterStableModal(ui.Modal, title="🏷️ تسجيل أو تعديل ا
                     )
                     db.add(new_stable)
                     db.commit()
-                    embed = discord.Embed(
-                        title="🎉 تم تسجيل المنقية بنجاح!",
-                        description=f"أهلاً بك يا {interaction.user.mention}، تم تسجيل منقية **{name_val}** في النظام بنجاح.\n\nالخطوة التالية:\nاضغط على زر **🔒 فتح شات منقيتي الخاص** لتفتح غرفتك السرية وتبدأ برفع صور نياقك!",
-                        color=0x16A34A
-                    )
+                    active_stable = new_stable
+
+            # إنشاء الشات الخاص تلقائياً فور تسجيل المنقية والدخول إليه مباشرة
+            thread_link = ""
+            try:
+                thread = await get_or_create_stable_thread(interaction.channel, interaction.user, active_stable)
+                thread_link = f"\n\n👉 **تفضل بالدخول إلى شاتك السري من هنا:** {thread.mention}\n(ارفع صور نياقك داخله ليتم قراءتها وحفظها تلقائياً)"
+            except Exception as te:
+                thread_link = f"\n\n*(اضغط زر 🔒 فتح شات منقيتي الخاص بعد التأكد من إعطاء البوت رتبة Administrator أو صلاحية إنشاء الثردات: {str(te)})*"
+
+            embed = discord.Embed(
+                title="🎉 تم تسجيل المنقية بنجاح!",
+                description=f"أهلاً بك يا {interaction.user.mention}، تم تسجيل منقية **{active_stable.name}** في النظام بنجاح.{thread_link}",
+                color=0x16A34A
+            )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception as e:
             try:
@@ -454,60 +506,19 @@ class MainControlView(ui.View):
                 await interaction.response.send_message("أنت متواجد بالفعل في شات خاص! يمكنك رفع صورك هنا مباشرة.", ephemeral=True)
                 return
 
-            # البحث عن ثرد موجود أو إنشاء ثرد جديد
-            thread_name = f"🔒-{stable.name}"
-            target_thread = None
-
-            # فحص الثردات النشطة
-            if hasattr(channel, 'threads'):
-                for t in channel.threads:
-                    if t.name == thread_name and not t.archived:
-                        target_thread = t
-                        break
-
-            if not target_thread:
-                try:
-                    # إنشاء Private Thread إذا أمكن
-                    target_thread = await channel.create_thread(
-                        name=thread_name,
-                        type=discord.ChannelType.private_thread,
-                        auto_archive_duration=1440
-                    )
-                except Exception:
-                    # Fallback إلى Public Thread إذا كان السيرفر بدون ميزة Private Threads
-                    target_thread = await channel.create_thread(
-                        name=thread_name,
-                        type=discord.ChannelType.public_thread,
-                        auto_archive_duration=1440
-                    )
-
-                # إضافة العضو للثرد
-                try:
-                    await target_thread.add_user(interaction.user)
-                except Exception:
-                    pass
-
-                # إرسال رسالة ترحيبية داخل الثرد مع اللوحة
-                welcome_embed = discord.Embed(
-                    title=f"🔒 شات منقية: {stable.name}",
-                    description=(
-                        f"مرحباً بك يا {interaction.user.mention} في غرفتك الخاصة!\n\n"
-                        "**هذا الشات سري ومخصص لمنقيتك:**\n"
-                        "📸 **ارفع صور كشوفات نياقك هنا مباشرة** (1 أو 10 أو 30 صورة معاً أو ملف ZIP).\n"
-                        "⚡ سيقوم البوت بقراءتها فوراً وحفظها في منقيتك.\n"
-                        "🚀 بعد الانتهاء اضغط زر **حساب أفضل تشكيلة للبطولة** للحصول على تشكيلتك الفائزة!"
-                    ),
-                    color=0x16A34A
+            try:
+                target_thread = await get_or_create_stable_thread(channel, interaction.user, stable)
+                await interaction.response.send_message(
+                    f"✅ تم فتح شاتك الخاص بنجاح! تفضل بالدخول إليه من هنا: {target_thread.mention}",
+                    ephemeral=True
                 )
-                welcome_embed.set_footer(text="نظام مزاين الذكي • سرية وأمان تام")
-                await target_thread.send(embed=welcome_embed, view=MainControlView())
-
-            await interaction.response.send_message(
-                f"✅ تم فتح شاتك الخاص بنجاح! تفضل بالدخول إليه من هنا: {target_thread.mention}",
-                ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(f"❌ تعذر فتح الشات الخاص: {str(e)}", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "❌ تعذر فتح الشات: يرجى التأكد من إعطاء رتبة البوت صلاحية **Administrator** أو تفعيل صلاحية (إنشاء الخيوط / Create Threads) في هذا الروم.",
+                    ephemeral=True
+                )
+            except Exception as e:
+                await interaction.response.send_message(f"❌ تعذر فتح الشات الخاص: {str(e)}", ephemeral=True)
         finally:
             db.close()
 
