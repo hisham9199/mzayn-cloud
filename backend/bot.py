@@ -853,15 +853,23 @@ async def on_message(message: discord.Message):
         except Exception:
             processing_msg = None
 
+        total_images = len(image_items)
+        sem = asyncio.Semaphore(4)
+        progress_lock = asyncio.Lock()
+        completed_count = 0
         saved_count = 0
         summary_lines = []
-        total_images = len(image_items)
 
-        for idx, (filename, img_data) in enumerate(image_items, 1):
-            try:
+        async def process_single_image(idx: int, filename: str, img_data: bytes):
+            nonlocal completed_count, saved_count
+            async with sem:
+                # OCR extraction runs asynchronously without blocking
                 ocr_res = await extract_camel_data_from_image(img_data)
+                
                 number_val = ocr_res.get("number", {}).get("value") or ocr_res.get("name", {}).get("value") or f"ناقة {filename}"
                 name_val = ocr_res.get("name", {}).get("value") or None
+                gender_val = ocr_res.get("gender", {}).get("value") or None
+                color_val = ocr_res.get("color", {}).get("value") or None
                 points_val = int(ocr_res.get("points", {}).get("value")) if ocr_res.get("points", {}).get("value") else None
                 spacing_val = int(ocr_res.get("spacing", {}).get("value")) if ocr_res.get("spacing", {}).get("value") else None
 
@@ -873,72 +881,92 @@ async def on_message(message: discord.Message):
                 is_valid = bool(ocr_res.get("validation_ok", False))
                 needs_review = not is_valid or ocr_res.get("overall_status") != "green"
 
-                # فحص التكرار الذكي (بناءً على رقم الناقة أو الصفات السبع المتطابقة)
-                existing_camel = None
-                if number_val and str(number_val).strip() and not str(number_val).startswith("ناقة "):
-                    existing_camel = db.query(Camel).filter(
-                        Camel.stable_id == stable.id,
-                        Camel.number == str(number_val).strip()
-                    ).first()
+                # DB operations with dedicated session per image for complete concurrency safety
+                thread_db = SessionLocal()
+                try:
+                    existing_camel = None
+                    if number_val and str(number_val).strip() and not str(number_val).startswith("ناقة "):
+                        existing_camel = thread_db.query(Camel).filter(
+                            Camel.stable_id == stable.id,
+                            Camel.number == str(number_val).strip()
+                        ).first()
 
-                if not existing_camel and attr_dict.get("neck") is not None:
-                    existing_camel = db.query(Camel).filter(
-                        Camel.stable_id == stable.id,
-                        Camel.neck == attr_dict.get("neck"),
-                        Camel.lips == attr_dict.get("lips"),
-                        Camel.nose == attr_dict.get("nose"),
-                        Camel.head == attr_dict.get("head"),
-                        Camel.eyelashes == attr_dict.get("eyelashes"),
-                        Camel.ear == attr_dict.get("ear"),
-                        Camel.hump == attr_dict.get("hump")
-                    ).first()
+                    if not existing_camel and attr_dict.get("neck") is not None:
+                        existing_camel = thread_db.query(Camel).filter(
+                            Camel.stable_id == stable.id,
+                            Camel.neck == attr_dict.get("neck"),
+                            Camel.lips == attr_dict.get("lips"),
+                            Camel.nose == attr_dict.get("nose"),
+                            Camel.head == attr_dict.get("head"),
+                            Camel.eyelashes == attr_dict.get("eyelashes"),
+                            Camel.ear == attr_dict.get("ear"),
+                            Camel.hump == attr_dict.get("hump")
+                        ).first()
 
-                if existing_camel:
-                    existing_camel.number = str(number_val)
-                    if name_val:
-                        existing_camel.name = name_val
-                    existing_camel.points = points_val
-                    existing_camel.spacing = spacing_val
-                    existing_camel.is_valid = is_valid
-                    existing_camel.points_valid = is_valid
-                    existing_camel.spacing_valid = is_valid
-                    existing_camel.needs_review = needs_review
-                    for attr, val in attr_dict.items():
-                        setattr(existing_camel, attr, val)
-                    db.commit()
-                    saved_count += 1
-                    status_icon = "🔄"
-                    summary_lines.append(f"{status_icon} تحديث ناقة **#{number_val}** (موجودة مسبقاً) — نقاط: **{points_val or '—'}** | تباعد: **{spacing_val if spacing_val is not None else '—'}**")
-                else:
-                    new_camel = Camel(
-                        number=str(number_val),
-                        name=name_val,
-                        stable_id=stable.id,
-                        points=points_val,
-                        spacing=spacing_val,
-                        is_valid=is_valid,
-                        points_valid=is_valid,
-                        spacing_valid=is_valid,
-                        needs_review=needs_review,
-                        ocr_confidence=ocr_res.get("overall_confidence", 0.0),
-                        status="available",
-                        **attr_dict
-                    )
-                    db.add(new_camel)
-                    db.commit()
-                    saved_count += 1
-                    status_icon = "✅" if is_valid else "⚠️"
-                    summary_lines.append(f"{status_icon} إضافة ناقة جديدة **#{number_val}** — نقاط: **{points_val or '—'}** | تباعد: **{spacing_val if spacing_val is not None else '—'}**")
+                    if existing_camel:
+                        existing_camel.number = str(number_val)
+                        if name_val:
+                            existing_camel.name = name_val
+                        if gender_val:
+                            existing_camel.gender = gender_val
+                        if color_val:
+                            existing_camel.color = color_val
+                        existing_camel.points = points_val
+                        existing_camel.spacing = spacing_val
+                        existing_camel.is_valid = is_valid
+                        existing_camel.points_valid = is_valid
+                        existing_camel.spacing_valid = is_valid
+                        existing_camel.needs_review = needs_review
+                        for attr, val in attr_dict.items():
+                            setattr(existing_camel, attr, val)
+                        thread_db.commit()
+                        line = f"🔄 تحديث ناقة **#{number_val}** (موجودة مسبقاً) — نقاط: **{points_val or '—'}** | تباعد: **{spacing_val if spacing_val is not None else '—'}**"
+                    else:
+                        new_camel = Camel(
+                            number=str(number_val),
+                            name=name_val,
+                            gender=gender_val,
+                            color=color_val,
+                            stable_id=stable.id,
+                            points=points_val,
+                            spacing=spacing_val,
+                            is_valid=is_valid,
+                            points_valid=is_valid,
+                            spacing_valid=is_valid,
+                            needs_review=needs_review,
+                            ocr_confidence=ocr_res.get("overall_confidence", 0.0),
+                            status="available",
+                            **attr_dict
+                        )
+                        thread_db.add(new_camel)
+                        thread_db.commit()
+                        status_icon = "✅" if is_valid else "⚠️"
+                        line = f"{status_icon} إضافة ناقة جديدة **#{number_val}** — نقاط: **{points_val or '—'}** | تباعد: **{spacing_val if spacing_val is not None else '—'}**"
 
-                if processing_msg and (idx % 3 == 0 or idx == total_images) and idx < total_images:
+                    success = True
+                except Exception as e:
+                    thread_db.rollback()
+                    line = f"❌ صورة {idx}: تعذر الحفظ ({str(e)})"
+                    success = False
+                finally:
+                    thread_db.close()
+
+                async with progress_lock:
+                    completed_count += 1
+                    if success:
+                        saved_count += 1
+                    summary_lines.append(line)
+                    curr_completed = completed_count
+
+                if processing_msg and (curr_completed % 3 == 0 or curr_completed == total_images) and curr_completed < total_images:
                     try:
-                        await processing_msg.edit(content=f"⏳ جاري استخراج وحفظ النياق بالذكاء الاصطناعي... ({idx}/{total_images})")
+                        await processing_msg.edit(content=f"⚡ جاري المعالجة السريعة للنياق بالذكاء الاصطناعي... ({curr_completed}/{total_images})")
                     except Exception:
                         pass
 
-                await asyncio.sleep(0.01)
-            except Exception as e:
-                summary_lines.append(f"❌ صورة {idx}: تعذر الحفظ ({str(e)})")
+        # تشغيل كافة الصور بشكل متزامن سريع (4 في نفس الوقت)
+        tasks = [process_single_image(idx, fname, img_bytes) for idx, (fname, img_bytes) in enumerate(image_items, 1)]
+        await asyncio.gather(*tasks)
 
         embed = discord.Embed(
             title=f"🐪 تم حفظ {saved_count} من أصل {total_images} ناقة لمنقية: {stable.name}",

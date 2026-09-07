@@ -11,6 +11,9 @@ import re
 import os
 import asyncio
 from typing import Optional, Dict, Any, List, Tuple
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ------------------------------------------------------------------ #
 # OCR Engine Selection                                                 #
@@ -29,7 +32,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 if OPENAI_API_KEY:
     OCR_AVAILABLE = True
     OCR_ENGINE = "openai_vision"
-    print("✅ OpenAI GPT-4o-mini Vision enabled as primary OCR engine")
+    print("[OCR] OpenAI GPT-4o-mini Vision enabled as primary OCR engine")
 else:
     # --- EasyOCR (يحمل فقط في حال عدم توفر OpenAI لتوفير ذاكرة السيرفر) ---
     try:
@@ -37,9 +40,9 @@ else:
         _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
         OCR_AVAILABLE = True
         OCR_ENGINE = "easyocr"
-        print("✅ EasyOCR initialized successfully")
+        print("[OCR] EasyOCR initialized successfully")
     except Exception as e:
-        print(f"⚠️  EasyOCR not available: {e}")
+        print(f"[OCR] EasyOCR not available: {e}")
 
 # --- Tesseract OCR fallback ---
 try:
@@ -49,9 +52,9 @@ try:
     OCR_AVAILABLE = True
     if not _reader:
         OCR_ENGINE = "tesseract"
-    print("✅ Tesseract OCR initialized successfully")
+    print("[OCR] Tesseract OCR initialized successfully")
 except Exception as e:
-    print(f"⚠️  Tesseract not available: {e}")
+    print(f"[OCR] Tesseract not available: {e}")
 
 # Check if any engine is ready
 if not OCR_AVAILABLE and GOOGLE_API_KEY:
@@ -767,8 +770,9 @@ Extract the following fields accurately and return STRICTLY a JSON object:
   "points": integer, // مجموع النقاط (المواصفات)
   "spacing": integer, // التباعد
   "number": "string", // رقم أو اسم الناقة
-  "name": "string", // اسم الناقة
-  "color": "string", // اللون أو السلالة إن وجدت
+  "name": "string", // اسم الناقة إن وجد
+  "gender": "string", // الجنس: "ذكر" أو "أنثى" إن وجد، وإلا ""
+  "color": "string", // اللون أو السلالة إن وجد (مثال: حمر، صفر، وضح، مجاهيم...)
   "head": integer, // الرأس
   "neck": integer, // الرقبة
   "nose": integer, // الأنف
@@ -835,6 +839,14 @@ Return ONLY the JSON.
         field_values["spacing"] = {"value": str(sp), "confidence": 0.99, "status": "green"}
         field_values["number"] = {"value": str(raw.get("number") or ""), "confidence": 0.99, "status": "green"}
         field_values["name"] = {"value": str(raw.get("name") or raw.get("number") or ""), "confidence": 0.99, "status": "green"}
+        gender_str = str(raw.get("gender") or "").strip()
+        if "ذكر" in gender_str or "فحل" in gender_str or "قعود" in gender_str or "جمل" in gender_str:
+            gender_clean = "ذكر"
+        elif "أنثى" in gender_str or "انثى" in gender_str or "بكرة" in gender_str or "ناقة" in gender_str:
+            gender_clean = "أنثى"
+        else:
+            gender_clean = gender_str if gender_str in ["ذكر", "أنثى"] else ""
+        field_values["gender"] = {"value": gender_clean, "confidence": 0.99, "status": "green"}
         field_values["color"] = {"value": str(raw.get("color") or ""), "confidence": 0.99, "status": "green"}
 
         valid = bool(len(attr_vals) == 7 and int(pts) == calc_sum and int(sp) == calc_sp)
