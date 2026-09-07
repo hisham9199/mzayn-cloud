@@ -156,9 +156,8 @@ def delete_camel(camel_id: int, db: Session = Depends(get_db)):
     camel = db.query(Camel).filter(Camel.id == camel_id).first()
     if not camel:
         raise HTTPException(status_code=404, detail="الناقة غير موجودة")
-    log = AuditLog(camel_id=camel_id, entity_type="camel", entity_id=camel_id,
-                   action="delete", field_name="status", old_value=camel.status, new_value="deleted")
-    db.add(log)
+    # حذف سجلات التدقيق المرتبطة لتجنب Foreign Key Constraint
+    db.query(AuditLog).filter(AuditLog.camel_id == camel_id).delete(synchronize_session=False)
     db.delete(camel)
     db.commit()
     return {"message": "تم حذف الناقة"}
@@ -293,6 +292,8 @@ def bulk_assign_camels(data: BulkAssignRequest, db: Session = Depends(get_db)):
 def bulk_delete_camels(data: BulkDeleteRequest, db: Session = Depends(get_db)):
     if not data.camel_ids:
         raise HTTPException(status_code=400, detail="لم يتم اختيار نياق")
+    # حذف سجلات التدقيق المرتبطة أولاً لتجنب Foreign Key Violation
+    db.query(AuditLog).filter(AuditLog.camel_id.in_(data.camel_ids)).delete(synchronize_session=False)
     count = db.query(Camel).filter(Camel.id.in_(data.camel_ids)).delete(synchronize_session=False)
     db.commit()
     return {"message": f"تم حذف {count} ناقة بنجاح", "count": count}
