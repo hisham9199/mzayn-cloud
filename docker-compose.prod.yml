@@ -77,6 +77,24 @@ services:
     container_name: mzayn_frontend
     restart: unless-stopped
 
+  # Discord Bot بوت مزاين التفاعلي
+  discord_bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mzayn_discord_bot
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-Mzayn2025SecretPass}@db:5432/mzayn_db
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python bot.py
+
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
