@@ -1,4 +1,4 @@
-﻿version: '3.9'
+version: '3.9'
 
 services:
   # قاعدة البيانات
@@ -67,7 +67,7 @@ services:
     depends_on:
       - redis
       - db
-    command: celery -A workers.ocr_worker worker --loglevel=info --concurrency=4 -Q ocr --max-tasks-per-child=20
+    command: celery -A workers.ocr_worker worker --loglevel=info --concurrency=2 -Q ocr --max-tasks-per-child=20
 
   # Frontend React Static Build
   frontend:
