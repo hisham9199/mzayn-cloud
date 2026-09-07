@@ -119,11 +119,23 @@ def get_camel(camel_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=dict)
-def create_camel(data: CamelCreate, db: Session = Depends(get_db)):
+def create_camel(
+    data: CamelCreate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user)
+):
     camel_dict = data.model_dump()
     if not camel_dict.get("number") or not str(camel_dict["number"]).strip():
         count = db.query(Camel).count() + 1
         camel_dict["number"] = camel_dict.get("name") or f"ناقة {count}"
+
+    # إذا كان المستخدم basic_user، يتم إسناد الناقة لمنقيته تلقائياً وتثبيت المالك
+    if user and user.role != "admin":
+        user_stable = db.query(Stable).filter(Stable.discord_user_id == user.discord_id).first()
+        if user_stable:
+            camel_dict["stable_id"] = user_stable.id
+        camel_dict["owner"] = user.global_name or user.username
+
     camel = Camel(**camel_dict)
     _validate_and_enrich(camel)
     db.add(camel)

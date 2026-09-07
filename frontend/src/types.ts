@@ -51,6 +51,8 @@ export interface Stable {
     description?: string
     camel_count?: number
     created_at: string
+    discord_user_id?: string
+    discord_username?: string
 }
 
 export interface Championship {

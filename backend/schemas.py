@@ -20,6 +20,8 @@ class StableOut(StableBase):
     id: int
     created_at: datetime
     camel_count: Optional[int] = 0
+    discord_user_id: Optional[str] = None
+    discord_username: Optional[str] = None
 
     class Config:
         from_attributes = True

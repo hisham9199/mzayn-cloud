@@ -205,13 +205,18 @@ export default function Stables() {
                                 </div>
                             </div>
                             <div className="divider" />
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div>
                                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>
                                         {(s.camel_count ?? 0).toLocaleString('ar')}
                                     </div>
                                     <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>نياق مسجلة</div>
                                 </div>
+                                {s.discord_username && (
+                                    <span className="badge badge-secondary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
+                                        👤 {s.discord_username}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     ))}
