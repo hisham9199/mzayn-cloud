@@ -12,6 +12,60 @@ interface ExtractedCamelItem {
     errorMsg?: string
 }
 
+// ضغط وتصغير الصور الكبيرة في المتصفح قبل إرسالها لسرعة فائقة وتوفير الحجم
+async function optimizeImageForOcr(file: File, maxDimension = 1600, quality = 0.85): Promise<File> {
+    if (!file.type.startsWith('image/') || file.size < 400 * 1024) {
+        return file // أقل من 400KB لا يحتاج ضغط
+    }
+    return new Promise((resolve) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.onload = () => {
+            URL.revokeObjectURL(url)
+            let { width, height } = img
+            if (width > maxDimension || height > maxDimension) {
+                if (width > height) {
+                    height = Math.round((height * maxDimension) / width)
+                    width = maxDimension
+                } else {
+                    width = Math.round((width * maxDimension) / height)
+                    height = maxDimension
+                }
+            }
+            const canvas = document.createElement('canvas')
+            canvas.width = width
+            canvas.height = height
+            const ctx = canvas.getContext('2d')
+            if (!ctx) {
+                resolve(file)
+                return
+            }
+            ctx.imageSmoothingEnabled = true
+            ctx.imageSmoothingQuality = 'high'
+            ctx.drawImage(img, 0, 0, width, height)
+            canvas.toBlob(
+                (blob) => {
+                    if (!blob || blob.size >= file.size) {
+                        resolve(file)
+                        return
+                    }
+                    resolve(new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+                        type: 'image/jpeg',
+                        lastModified: Date.now(),
+                    }))
+                },
+                'image/jpeg',
+                quality
+            )
+        }
+        img.onerror = () => {
+            URL.revokeObjectURL(url)
+            resolve(file)
+        }
+        img.src = url
+    })
+}
+
 export default function BulkImport() {
     const qc = useQueryClient()
     const [files, setFiles] = useState<File[]>([])
@@ -119,12 +173,14 @@ export default function BulkImport() {
             let completedCount = 0
             const CONCURRENCY = 3 // معالجة 3 صور بالتوازي في نفس اللحظة
 
-            const processSingleFile = async (file: File, index: number) => {
+            const processSingleFile = async (rawFile: File, index: number) => {
                 if (stopSignalRef.current) return
                 try {
+                    // ضغط وتحسين الصورة تلقائياً لتقليل وقت الرفع من ثوانٍ إلى أجزاء من الثانية
+                    const file = await optimizeImageForOcr(rawFile)
                     const res = await ocrApi.single(file)
                     const item: ExtractedCamelItem = {
-                        filename: file.name,
+                        filename: rawFile.name,
                         fileIndex: index + 1,
                         result: res.data,
                         status: 'success',
@@ -137,7 +193,7 @@ export default function BulkImport() {
                     }
                 } catch (err: any) {
                     newResults[index] = {
-                        filename: file.name,
+                        filename: rawFile.name,
                         fileIndex: index + 1,
                         result: null,
                         status: 'error',
@@ -150,7 +206,7 @@ export default function BulkImport() {
                         current: completedCount,
                         total: total,
                         percent: Math.round((completedCount / total) * 100),
-                        currentFilename: file.name,
+                        currentFilename: rawFile.name,
                     })
                 }
             }
@@ -162,9 +218,9 @@ export default function BulkImport() {
                 }
                 const chunk = files.slice(i, i + CONCURRENCY).map((file, offset) => processSingleFile(file, i + offset))
                 await Promise.all(chunk)
-                // تأخير بسيط بين الدفعات لتجنب تجاوز معدل OpenAI API Rate Limits
+                // تأخير بسيط بين الدفعات لحماية الحساب من تجاوز معدل OpenAI API Rate Limits
                 if (i + CONCURRENCY < total) {
-                    await new Promise(r => setTimeout(r, 600))
+                    await new Promise(r => setTimeout(r, 400))
                 }
             }
             toast.success(`اكتملت معالجة ${newResults.filter(Boolean).length} صورة! 🐪`)
@@ -214,6 +270,33 @@ export default function BulkImport() {
     const stopProcessing = () => {
         stopSignalRef.current = true
         setIsProcessing(false)
+    }
+
+    // إعادة معالجة صورة واحدة محددة في حال الفشل
+    const retrySingleFile = async (index: number) => {
+        const rawFile = files[index]
+        if (!rawFile) return
+        toast('جاري إعادة قراءة الصورة...', { icon: '🔄' })
+        try {
+            const file = await optimizeImageForOcr(rawFile)
+            const res = await ocrApi.single(file)
+            setLiveResults(prev => {
+                const copy = [...prev]
+                copy[index] = {
+                    filename: rawFile.name,
+                    fileIndex: index + 1,
+                    result: res.data,
+                    status: 'success',
+                }
+                return copy
+            })
+            if (res.data?.validation_ok || res.data?.overall_status === 'green') {
+                setSelectedResults(prev => new Set([...prev, index]))
+            }
+            toast.success(`تمت إعادة قراءة ${rawFile.name} بنجاح!`)
+        } catch {
+            toast.error(`تعذر استخراج بيانات ${rawFile.name}`)
+        }
     }
 
     // Save selected camels to DB
@@ -687,20 +770,34 @@ export default function BulkImport() {
                                                         )}
                                                     </span>
                                                 </td>
-                                                {/* Edit toggle button */}
+                                                {/* Edit toggle button and Retry button */}
                                                 <td style={{ textAlign: 'center' }}>
-                                                    <button
-                                                        className={`btn btn-sm ${isEditing ? 'btn-primary' : rowNeedsReview(r) ? 'btn-warning' : 'btn-secondary'}`}
-                                                        style={{
-                                                            padding: '0.2rem 0.5rem',
-                                                            fontSize: '0.75rem',
-                                                            minWidth: 58,
-                                                            fontWeight: rowNeedsReview(r) ? 700 : undefined,
-                                                        }}
-                                                        onClick={() => setEditingRow(isEditing ? null : i)}
-                                                    >
-                                                        {isEditing ? 'حفظ' : rowNeedsReview(r) ? '⚠ صحّح' : 'تعديل'}
-                                                    </button>
+                                                    <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+                                                        {item.status === 'error' && files[i] && (
+                                                            <button
+                                                                className="btn btn-sm btn-outline-danger"
+                                                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}
+                                                                title="إعادة قراءة هذه الصورة"
+                                                                onClick={() => retrySingleFile(i)}
+                                                            >
+                                                                🔄 إعادة
+                                                            </button>
+                                                        )}
+                                                        {item.status !== 'error' && (
+                                                            <button
+                                                                className={`btn btn-sm ${isEditing ? 'btn-primary' : rowNeedsReview(r) ? 'btn-warning' : 'btn-secondary'}`}
+                                                                style={{
+                                                                    padding: '0.2rem 0.5rem',
+                                                                    fontSize: '0.75rem',
+                                                                    minWidth: 58,
+                                                                    fontWeight: rowNeedsReview(r) ? 700 : undefined,
+                                                                }}
+                                                                onClick={() => setEditingRow(isEditing ? null : i)}
+                                                            >
+                                                                {isEditing ? 'حفظ' : rowNeedsReview(r) ? '⚠ صحّح' : 'تعديل'}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         )
