@@ -30,16 +30,16 @@ if OPENAI_API_KEY:
     OCR_AVAILABLE = True
     OCR_ENGINE = "openai_vision"
     print("✅ OpenAI GPT-4o-mini Vision enabled as primary OCR engine")
-
-# --- EasyOCR (الأولوية الأولى للدقة العالية في اللغة العربية والتصميم المعقد) ---
-try:
-    import easyocr
-    _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
-    OCR_AVAILABLE = True
-    OCR_ENGINE = "easyocr"
-    print("✅ EasyOCR initialized successfully")
-except Exception as e:
-    print(f"⚠️  EasyOCR not available: {e}")
+else:
+    # --- EasyOCR (يحمل فقط في حال عدم توفر OpenAI لتوفير ذاكرة السيرفر) ---
+    try:
+        import easyocr
+        _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
+        OCR_AVAILABLE = True
+        OCR_ENGINE = "easyocr"
+        print("✅ EasyOCR initialized successfully")
+    except Exception as e:
+        print(f"⚠️  EasyOCR not available: {e}")
 
 # --- Tesseract OCR fallback ---
 try:
@@ -299,8 +299,14 @@ def run_google_vision_rest(img: np.ndarray) -> List[Dict]:
 # EasyOCR fallback                                                     #
 # ------------------------------------------------------------------ #
 def run_easyocr(img: np.ndarray) -> List[Dict]:
+    global _reader
     if _reader is None:
-        return []
+        try:
+            import easyocr
+            _reader = easyocr.Reader(['ar', 'en'], gpu=False, verbose=False)
+        except Exception as e:
+            print(f"EasyOCR init error: {e}")
+            return []
     try:
         results = _reader.readtext(img, detail=1, paragraph=False)
     except Exception as e:

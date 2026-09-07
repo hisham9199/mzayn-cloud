@@ -39,7 +39,7 @@ services:
       UPLOAD_DIR: /app/uploads
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-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}
       GOOGLE_VISION_API_KEY: ${GOOGLE_VISION_API_KEY:-}
     volumes:
       - uploads_data:/app/uploads
@@ -50,26 +50,6 @@ services:
       redis:
         condition: service_started
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --timeout-keep-alive 75
-
-  # Celery OCR Workers معالجة OCR بالتوازي
-  celery_worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: mzayn_celery
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-Mzayn2025SecretPass}@db:5432/mzayn_db
-      UPLOAD_DIR: /app/uploads
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    volumes:
-      - uploads_data:/app/uploads
-    depends_on:
-      - redis
-      - db
-    command: celery -A workers.ocr_worker worker --loglevel=info --concurrency=2 -Q ocr --max-tasks-per-child=20
 
   # Frontend React Static Build
   frontend:
@@ -88,8 +68,8 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://mzayn:${DB_PASSWORD:-Mzayn2025SecretPass}@db:5432/mzayn_db
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-MTU0NDQwMTYzNzQ0NjI1ODg5OA.GLcIZ_.x8bn_AYSLanjT2m_QGCQKUU-F6nO81K1FzR1Aw}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-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}
       UPLOAD_DIR: /app/uploads
     volumes:
       - uploads_data:/app/uploads
