@@ -621,33 +621,39 @@ def parse_camel_blocks(blocks: List[Dict], img_h: int, img_w: int) -> Dict[str, 
 
 
 # ------------------------------------------------------------------ #
-# Image Preprocessing                                                  #
+# Image Preprocessing & Decoding with EXIF fix                         #
 # ------------------------------------------------------------------ #
+def decode_image_with_exif(image_bytes: bytes) -> Optional[np.ndarray]:
+    """Decodes image bytes and automatically corrects rotation using EXIF data (crucial for mobile/WhatsApp)."""
+    try:
+        from PIL import Image, ImageOps
+        import io
+        pil_img = Image.open(io.BytesIO(image_bytes))
+        pil_img = ImageOps.exif_transpose(pil_img)
+        if pil_img.mode != 'RGB':
+            pil_img = pil_img.convert('RGB')
+        arr = np.array(pil_img)
+        return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+    except Exception:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        return cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+
 def preprocess_image(img: np.ndarray) -> List[np.ndarray]:
-    """Return multiple processed variants of the image to maximize OCR accuracy."""
+    """
+    Return a single contrast-enhanced variant (CLAHE).
+    Avoids 2x upscaling to keep CPU memory and time minimal (under 3s).
+    """
     variants = []
-
-    # Variant 1: Upscaled original (2x)
-    h, w = img.shape[:2]
-    up2x = cv2.resize(img, (int(w * 2), int(h * 2)), interpolation=cv2.INTER_LANCZOS4)
-    variants.append(up2x)
-
-    # Variant 2: Upscaled + contrast enhanced (CLAHE on LAB)
-    lab = cv2.cvtColor(up2x, cv2.COLOR_BGR2LAB)
-    l_ch, a_ch, b_ch = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    l_ch = clahe.apply(l_ch)
-    lab = cv2.merge([l_ch, a_ch, b_ch])
-    enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-    variants.append(enhanced)
-
-    # Variant 3: Grayscale sharpened
-    gray = cv2.cvtColor(up2x, cv2.COLOR_BGR2GRAY)
-    sharpen_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    sharpened = cv2.filter2D(gray, -1, sharpen_kernel)
-    gray3 = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
-    variants.append(gray3)
-
+    try:
+        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        l_ch, a_ch, b_ch = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        l_ch = clahe.apply(l_ch)
+        enhanced = cv2.cvtColor(cv2.merge([l_ch, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
+        variants.append(enhanced)
+    except Exception:
+        pass
     return variants
 
 
@@ -671,7 +677,7 @@ def merge_block_results(all_block_sets: List[List[Dict]], img_h: int, img_w: int
             best_score = score
             best_result = res
 
-    if best_result is None:
+    if not best_result:
         return _simulated_ocr_result()
 
     # --- Smart Mathematical Self-Correction ---
@@ -679,18 +685,18 @@ def merge_block_results(all_block_sets: List[List[Dict]], img_h: int, img_w: int
     for a in ALL_ATTRIBUTES:
         try:
             v = int(best_result.get(a, {}).get("value") or 0)
-        except (ValueError, TypeError):
+        except Exception:
             v = 0
         attr_vals.append(v)
 
     if all(v > 0 for v in attr_vals):
         calc_sum = sum(attr_vals)
-        calc_sp = max(attr_vals) - min(attr_vals)
-
         try:
             pts = int(best_result.get("points", {}).get("value") or 0)
         except (ValueError, TypeError):
             pts = 0
+
+        calc_sp = max(attr_vals) - min(attr_vals)
 
         if pts > 0 and pts != calc_sum and abs(pts - calc_sum) <= 10:
             diff = pts - calc_sum
@@ -740,8 +746,7 @@ def merge_block_results(all_block_sets: List[List[Dict]], img_h: int, img_w: int
 # ------------------------------------------------------------------ #
 def extract_camel_data_from_image_sync(image_bytes: bytes) -> Dict[str, Any]:
     """Accepts raw image bytes and returns structured dictionary with confidence."""
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    img = decode_image_with_exif(image_bytes)
 
     if img is None:
         return {"error": "تعذّر فك ترميز الصورة"}
@@ -749,9 +754,18 @@ def extract_camel_data_from_image_sync(image_bytes: bytes) -> Dict[str, Any]:
     if not OCR_AVAILABLE:
         return _simulated_ocr_result()
 
+    # Optimal scaling for OCR speed and accuracy
     h, w = img.shape[:2]
+    if max(h, w) > 1280:
+        scale = 1280.0 / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        h, w = img.shape[:2]
+    elif max(h, w) < 650:
+        scale = 800.0 / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+        h, w = img.shape[:2]
 
-    # الخطوة 1: الفحص المباشر على الصورة الأصلية (أسرع بـ 10 أضعاف)
+    # الخطوة 1: الفحص المباشر على الصورة الأصلية (أسرع مسار)
     blocks = run_ocr(img)
     if blocks:
         first_res = parse_camel_blocks(blocks, h, w)
@@ -760,7 +774,7 @@ def extract_camel_data_from_image_sync(image_bytes: bytes) -> Dict[str, Any]:
             first_res["ocr_engine"] = OCR_ENGINE
             return first_res
 
-    # الخطوة 2: المعالجة المتقدمة (تباين وتكبير) كـ fallback في حال عدم اكتمال البيانات
+    # الخطوة 2: المعالجة المتقدمة (تباين CLAHE خفيف) فقط إذا لم تكتمل
     variants = preprocess_image(img)
     all_block_sets = [blocks] if blocks else []
     for variant in variants:
