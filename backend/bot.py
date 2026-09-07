@@ -691,7 +691,7 @@ class MainControlView(ui.View):
         finally:
             db.close()
 
-    # الصف الرابع: الإدارة والحذف
+    # الصف الرابع: الإدارة والدخول للموقع
     @ui.button(label="إدارة وحذف نياق المنقية", style=discord.ButtonStyle.danger, emoji="🗑️", custom_id="mzayn_btn_manage", row=3)
     async def btn_manage(self, interaction: discord.Interaction, button: ui.Button):
         db = SessionLocal()
@@ -715,6 +715,11 @@ class MainControlView(ui.View):
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         finally:
             db.close()
+
+    # زر رابط مباشر للموقع
+    @ui.button(label="🌐 الدخول لمنصة الموقع الإلكتروني", style=discord.ButtonStyle.link, url="http://168.119.170.236", row=3)
+    async def btn_web_link(self, interaction: discord.Interaction, button: ui.Button):
+        pass
 
 
 # ------------------------------------------------------------------ #
