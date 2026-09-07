@@ -4,14 +4,20 @@ from typing import List, Optional
 from database import get_db
 from models.stable import Stable
 from models.camel import Camel
+from models.user import User
+from routers.auth import get_optional_user
 from schemas import StableCreate, StableUpdate, StableOut
 
 router = APIRouter(prefix="/stables", tags=["stables"])
 
 
 @router.get("/", response_model=List[StableOut])
-def list_stables(db: Session = Depends(get_db)):
-    stables = db.query(Stable).all()
+def list_stables(db: Session = Depends(get_db), user: Optional[User] = Depends(get_optional_user)):
+    q = db.query(Stable)
+    if user and user.role != "admin":
+        q = q.filter(Stable.discord_user_id == user.discord_id)
+
+    stables = q.all()
     result = []
     for s in stables:
         count = db.query(Camel).filter(Camel.stable_id == s.id, Camel.status == "available").count()

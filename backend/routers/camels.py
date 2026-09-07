@@ -7,6 +7,8 @@ from database import get_db
 from models.camel import Camel
 from models.stable import Stable
 from models.audit_log import AuditLog
+from models.user import User
+from routers.auth import get_optional_user
 from schemas import CamelCreate, CamelUpdate, CamelOut, ValidationResult, TestCamelResult
 from utils.validators import validate_camel_data, compute_harmony, ATTRIBUTES
 from services.optimizer_service import test_camel_benefit, analyze_stable_needs
@@ -57,6 +59,7 @@ def _camel_to_dict(camel: Camel, db: Session) -> dict:
 @router.get("/", response_model=List[dict])
 def list_camels(
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
     stable_id: Optional[int] = None,
     status: Optional[str] = None,
     gender: Optional[str] = None,
@@ -70,8 +73,18 @@ def list_camels(
     limit: int = 200,
 ):
     q = db.query(Camel)
-    if stable_id:
+
+    # إذا كان المستخدم عضواً عادياً (BasicUser)، تظهر له فقط نياق منقيته الخاصة
+    if user and user.role != "admin":
+        user_stable = db.query(Stable).filter(Stable.discord_user_id == user.discord_id).first()
+        if user_stable:
+            q = q.filter(Camel.stable_id == user_stable.id)
+        else:
+            # لم يسجل منقية بعد فلا تظهر له نياق الآخرين
+            return []
+    elif stable_id:
         q = q.filter(Camel.stable_id == stable_id)
+
     if status:
         q = q.filter(Camel.status == status)
     if gender:

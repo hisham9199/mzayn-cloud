@@ -7,6 +7,20 @@ export const api = axios.create({
     headers: { 'Content-Type': 'application/json' },
 })
 
+// إرفاق التوكن تلقائياً مع كل طلب
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('mzayn_token')
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+})
+
+export const authApi = {
+    getLoginUrl: () => api.get('/auth/discord/login'),
+    getMe: () => api.get('/auth/me'),
+}
+
 export const stableApi = {
     list: () => api.get('/stables/'),
     create: (data: any) => api.post('/stables/', data),

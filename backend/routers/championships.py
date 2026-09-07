@@ -5,6 +5,8 @@ from database import get_db
 from models.championship import Championship, ChampionshipResult
 from models.camel import Camel
 from models.stable import Stable
+from models.user import User
+from routers.auth import get_optional_user
 from schemas import ChampionshipCreate, ChampionshipOut, OptimizeRequest, OptimizeResult
 from services.optimizer_service import optimize_championship
 
@@ -23,8 +25,16 @@ def _camel_to_dict_for_optimizer(c):
 
 
 @router.get("/", response_model=List[dict])
-def list_championships(db: Session = Depends(get_db)):
-    champs = db.query(Championship).order_by(Championship.created_at.desc()).all()
+def list_championships(db: Session = Depends(get_db), user: Optional[User] = Depends(get_optional_user)):
+    q = db.query(Championship)
+    if user and user.role != "admin":
+        user_stable = db.query(Stable).filter(Stable.discord_user_id == user.discord_id).first()
+        if user_stable:
+            q = q.filter(Championship.stable_id == user_stable.id)
+        else:
+            return []
+
+    champs = q.order_by(Championship.created_at.desc()).all()
     result = []
     for c in champs:
         d = {col.name: getattr(c, col.name) for col in c.__table__.columns}

@@ -6,12 +6,12 @@ import os
 from database import engine, Base
 
 # Import all models to register them
-from models import stable, camel, championship, audit_log  # noqa
+from models import user, stable, camel, championship, audit_log  # noqa
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-from routers import stables, camels, championships, ocr, excel
+from routers import auth, stables, camels, championships, ocr, excel
 
 app = FastAPI(
     title="نظام إدارة النياق - مزاين",
@@ -35,6 +35,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(stables.router)
 app.include_router(camels.router)
 app.include_router(championships.router)

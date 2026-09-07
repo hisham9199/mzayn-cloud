@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useState, useEffect } from 'react'
+import { authApi } from './api/client'
 import Dashboard from './pages/Dashboard'
 import Stables from './pages/Stables'
 import Camels from './pages/Camels'
@@ -9,6 +10,7 @@ import ChampionshipDetail from './pages/ChampionshipDetail'
 import BulkImport from './pages/BulkImport'
 import Analysis from './pages/Analysis'
 import ExcelIO from './pages/ExcelIO'
+import Login from './pages/Login'
 
 /* ─── Nav items ─── */
 const NAV_GROUPS = [
@@ -108,7 +110,18 @@ function MenuIcon() {
 }
 
 /* ─── Sidebar Component ─── */
-function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user?: any }) {
+    const isAdmin = user?.role === 'admin'
+
+    // فلترة القوائم للمستخدم العادي (إخفاء المنقيات إذا كان مخصصاً لمنقيته فقط)
+    const filteredGroups = NAV_GROUPS.map(group => ({
+        ...group,
+        items: group.items.filter(item => {
+            if (item.to === '/stables' && !isAdmin) return false // المنقيات العامة تظهر للأدمن
+            return true
+        })
+    }))
+
     return (
         <>
             {open && <div className="sidebar-overlay" onClick={onClose} aria-hidden="true" />}
@@ -120,13 +133,15 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                     </div>
                     <div className="sidebar-brand-text">
                         <div className="sidebar-brand-name">نظام مزاين</div>
-                        <div className="sidebar-brand-sub">إدارة النياق</div>
+                        <div className="sidebar-brand-sub">
+                            {isAdmin ? '🛡️ لوحة الإدارة العامة' : `🐪 منقية ${user?.stable_name || user?.global_name || ''}`}
+                        </div>
                     </div>
                 </div>
 
                 {/* Nav */}
                 <nav className="sidebar-nav" aria-label="التنقل الرئيسي">
-                    {NAV_GROUPS.map(group => (
+                    {filteredGroups.map(group => (
                         <div key={group.label}>
                             <div className="nav-section">{group.label}</div>
                             {group.items.map(item => (
@@ -156,16 +171,14 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 /* ─── Layout ─── */
-function Layout({ children }: { children: React.ReactNode }) {
+function Layout({ children, user, onLogout }: { children: React.ReactNode; user: any; onLogout: () => void }) {
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const location = useLocation()
 
-    // Close sidebar on route change (mobile)
     useEffect(() => {
         setSidebarOpen(false)
     }, [location.pathname])
 
-    // Close sidebar on resize to desktop
     useEffect(() => {
         const mq = window.matchMedia('(min-width: 1024px)')
         const handler = (e: MediaQueryListEvent) => { if (e.matches) setSidebarOpen(false) }
@@ -177,30 +190,81 @@ function Layout({ children }: { children: React.ReactNode }) {
         path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
     )?.[1] ?? 'نظام مزاين'
 
+    const isAdmin = user?.role === 'admin'
+
     return (
         <div className="app-layout">
-            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
             <div className="main-layout">
                 {/* Header */}
-                <header className="page-header">
-                    <button
-                        className="hamburger-btn"
-                        onClick={() => setSidebarOpen(true)}
-                        aria-label="فتح القائمة"
-                        aria-expanded={sidebarOpen}
-                    >
-                        <MenuIcon />
-                    </button>
-                    <div className="header-title">{pageTitle}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <header className="page-header" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button
+                            className="hamburger-btn"
+                            onClick={() => setSidebarOpen(true)}
+                            aria-label="فتح القائمة"
+                            aria-expanded={sidebarOpen}
+                        >
+                            <MenuIcon />
+                        </button>
+                        <div className="header-title">{pageTitle}</div>
+                    </div>
+
+                    {/* User profile & status */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <div style={{
-                            width: 32, height: 32, borderRadius: '50%',
-                            background: 'var(--primary-light)',
-                            border: '2px solid var(--primary-medium)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)',
-                            flexShrink: 0,
-                        }}>م</div>
+                            padding: '0.3rem 0.75rem',
+                            borderRadius: '9999px',
+                            background: isAdmin ? 'rgba(220, 38, 38, 0.1)' : 'rgba(22, 163, 74, 0.1)',
+                            border: `1px solid ${isAdmin ? '#dc2626' : '#16a34a'}`,
+                            color: isAdmin ? '#ef4444' : '#22c55e',
+                            fontSize: '0.78rem',
+                            fontWeight: 700
+                        }}>
+                            {isAdmin ? '👑 مدير (Admin)' : '👤 عضو (BasicUser)'}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {user.avatar ? (
+                                <img
+                                    src={`https://cdn.discordapp.com/avatars/${user.discord_id}/${user.avatar}.png?size=64`}
+                                    alt={user.username}
+                                    style={{ width: 34, height: 34, borderRadius: '50%', border: '2px solid var(--border)' }}
+                                />
+                            ) : (
+                                <div style={{
+                                    width: 34, height: 34, borderRadius: '50%',
+                                    background: 'var(--primary-light)',
+                                    border: '2px solid var(--primary-medium)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)',
+                                }}>
+                                    {(user.global_name || user.username || 'م')[0]}
+                                </div>
+                            )}
+                            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)' }}>
+                                {user.global_name || user.username}
+                            </span>
+                        </div>
+
+                        <button
+                            onClick={onLogout}
+                            title="تسجيل الخروج"
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-muted)',
+                                padding: '0.35rem 0.6rem',
+                                borderRadius: 'var(--radius-sm)',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                            }}
+                        >
+                            خروج 🚪
+                        </button>
                     </div>
                 </header>
 
@@ -215,6 +279,77 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 /* ─── App ─── */
 export default function App() {
+    const [user, setUser] = useState<any>(null)
+    const [loading, setLoading] = useState(true)
+    const [authError, setAuthError] = useState<string | null>(null)
+
+    useEffect(() => {
+        // فحص البارامترات في الرابط بعد عودة ديسكورد
+        const params = new URLSearchParams(window.location.search)
+        const tokenFromUrl = params.get('token')
+        const errorFromUrl = params.get('error')
+
+        if (tokenFromUrl) {
+            localStorage.setItem('mzayn_token', tokenFromUrl)
+            window.history.replaceState({}, document.title, window.location.pathname)
+        }
+
+        if (errorFromUrl) {
+            setAuthError(errorFromUrl)
+            window.history.replaceState({}, document.title, window.location.pathname)
+        }
+
+        // جلب بيانات المستخدم
+        const token = localStorage.getItem('mzayn_token')
+        if (token) {
+            authApi.getMe()
+                .then(res => {
+                    setUser(res.data)
+                })
+                .catch(() => {
+                    localStorage.removeItem('mzayn_token')
+                    setUser(null)
+                })
+                .finally(() => {
+                    setLoading(false)
+                })
+        } else {
+            setLoading(false)
+        }
+    }, [])
+
+    const handleLogout = () => {
+        localStorage.removeItem('mzayn_token')
+        setUser(null)
+    }
+
+    if (loading) {
+        return (
+            <div style={{
+                minHeight: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#0f172a',
+                color: '#fff',
+                fontFamily: 'Cairo, sans-serif'
+            }}>
+                <div className="spinner" style={{ width: 44, height: 44, marginBottom: '1rem' }} />
+                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>جاري التحقق من هوية الديسكورد...</div>
+            </div>
+        )
+    }
+
+    if (!user) {
+        return (
+            <>
+                <Toaster position="top-left" />
+                <Login error={authError} />
+            </>
+        )
+    }
+
     return (
         <BrowserRouter>
             <Toaster
@@ -235,14 +370,14 @@ export default function App() {
                 }}
             />
             <Routes>
-                <Route path="/"              element={<Layout><Dashboard /></Layout>} />
-                <Route path="/stables"       element={<Layout><Stables /></Layout>} />
-                <Route path="/camels"        element={<Layout><Camels /></Layout>} />
-                <Route path="/bulk-import"   element={<Layout><BulkImport /></Layout>} />
-                <Route path="/championships" element={<Layout><Championships /></Layout>} />
-                <Route path="/championships/:id" element={<Layout><ChampionshipDetail /></Layout>} />
-                <Route path="/analysis"      element={<Layout><Analysis /></Layout>} />
-                <Route path="/excel"         element={<Layout><ExcelIO /></Layout>} />
+                <Route path="/"              element={<Layout user={user} onLogout={handleLogout}><Dashboard /></Layout>} />
+                <Route path="/stables"       element={<Layout user={user} onLogout={handleLogout}><Stables /></Layout>} />
+                <Route path="/camels"        element={<Layout user={user} onLogout={handleLogout}><Camels /></Layout>} />
+                <Route path="/bulk-import"   element={<Layout user={user} onLogout={handleLogout}><BulkImport /></Layout>} />
+                <Route path="/championships" element={<Layout user={user} onLogout={handleLogout}><Championships /></Layout>} />
+                <Route path="/championships/:id" element={<Layout user={user} onLogout={handleLogout}><ChampionshipDetail /></Layout>} />
+                <Route path="/analysis"      element={<Layout user={user} onLogout={handleLogout}><Analysis /></Layout>} />
+                <Route path="/excel"         element={<Layout user={user} onLogout={handleLogout}><ExcelIO /></Layout>} />
             </Routes>
         </BrowserRouter>
     )
