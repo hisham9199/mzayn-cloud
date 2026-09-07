@@ -162,6 +162,10 @@ export default function BulkImport() {
                 }
                 const chunk = files.slice(i, i + CONCURRENCY).map((file, offset) => processSingleFile(file, i + offset))
                 await Promise.all(chunk)
+                // تأخير بسيط بين الدفعات لتجنب تجاوز معدل OpenAI API Rate Limits
+                if (i + CONCURRENCY < total) {
+                    await new Promise(r => setTimeout(r, 600))
+                }
             }
             toast.success(`اكتملت معالجة ${newResults.filter(Boolean).length} صورة! 🐪`)
         }
@@ -214,6 +218,11 @@ export default function BulkImport() {
 
     // Save selected camels to DB
     const saveMutation = useMutation(async () => {
+        if (!targetStableId) {
+            toast.error('يرجى اختيار المنقية أولاً لحفظ النياق بها ⚠️')
+            throw new Error('لم يتم تحديد المنقية')
+        }
+
         const toSave = liveResults.filter((_, i) => selectedResults.has(i) && _.status === 'success')
         let saved = 0
 
@@ -225,7 +234,7 @@ export default function BulkImport() {
                     number: r.number?.value || r.name?.value || `ناقة ${saved + 1}`,
                     name: r.name?.value || undefined,
                     color: r.color?.value || undefined,
-                    stable_id: targetStableId ? parseInt(targetStableId) : undefined,
+                    stable_id: parseInt(targetStableId),
                     points: r.points?.value ? parseInt(r.points.value) : undefined,
                     spacing: r.spacing?.value !== undefined && r.spacing?.value !== '' ? parseInt(r.spacing.value) : undefined,
                 }
@@ -472,26 +481,41 @@ export default function BulkImport() {
                     )}
 
                     {/* Action & Save Controls */}
-                    <div className="card" style={{ marginBottom: '1rem', padding: '0.85rem 1.25rem' }}>
+                    <div className="card" style={{
+                        marginBottom: '1rem',
+                        padding: '1rem 1.25rem',
+                        border: !targetStableId ? '1.5px solid var(--warning)' : '1px solid var(--border)',
+                        background: !targetStableId ? 'rgba(234, 179, 8, 0.05)' : 'var(--card-bg)'
+                    }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.875rem' }}>
-                                    المنقية للحفظ:
+                                <span style={{ fontWeight: 700, color: !targetStableId ? 'var(--warning)' : 'var(--text)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span>المنقية المستهدفة:</span>
+                                    <span style={{ color: 'var(--danger)', fontSize: '1rem' }}>* (إلزامي)</span>
                                 </span>
                                 <select
                                     className="form-control"
-                                    style={{ width: 200 }}
+                                    style={{
+                                        minWidth: 230,
+                                        borderColor: !targetStableId ? 'var(--warning)' : undefined,
+                                        boxShadow: !targetStableId ? '0 0 0 2px rgba(234, 179, 8, 0.2)' : undefined
+                                    }}
                                     value={targetStableId}
                                     onChange={e => setTargetStableId(e.target.value)}
                                 >
-                                    <option value="">-- بدون منقية --</option>
+                                    <option value="">-- يرجى اختيار المنقية أولاً --</option>
                                     {stables.map((s: Stable) => (
                                         <option key={s.id} value={s.id}>{s.name} ({s.camel_count || 0} ناقة)</option>
                                     ))}
                                 </select>
+                                {!targetStableId && (
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--warning)', fontWeight: 600 }}>
+                                        ⚠️ يجب تحديد المنقية قبل حفظ النياق
+                                    </span>
+                                )}
                             </div>
 
-                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setSelectedResults(new Set(liveResults.map((_, i) => i)))}>
                                     تحديد الكل
                                 </button>
@@ -504,8 +528,15 @@ export default function BulkImport() {
                                 </button>
                                 <button
                                     className="btn btn-primary"
-                                    onClick={() => saveMutation.mutate()}
-                                    disabled={totalSelected === 0 || saveMutation.isLoading}
+                                    onClick={() => {
+                                        if (!targetStableId) {
+                                            toast.error('يرجى اختيار المنقية أولاً لحفظ النياق بها ⚠️')
+                                            return
+                                        }
+                                        saveMutation.mutate()
+                                    }}
+                                    disabled={totalSelected === 0 || saveMutation.isLoading || !targetStableId}
+                                    title={!targetStableId ? 'يجب اختيار المنقية أولاً' : ''}
                                 >
                                     {saveMutation.isLoading ? (
                                         <><div className="spinner" style={{width:16,height:16}} /> جاري الحفظ...</>

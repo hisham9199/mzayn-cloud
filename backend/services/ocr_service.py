@@ -806,9 +806,24 @@ Return ONLY the JSON.
             'temperature': 0.0,
             'max_tokens': 500
         }
-        r = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=payload, timeout=25)
-        if r.status_code != 200:
-            print(f"OpenAI API error {r.status_code}: {r.text[:150]}")
+        
+        # محاولة الطلب مع إعادة المحاولة في حال وجود ضغط شبكة أو Rate Limit
+        import time
+        r = None
+        for attempt in range(3):
+            try:
+                r = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=payload, timeout=35)
+                if r.status_code == 200:
+                    break
+                elif r.status_code == 429:
+                    time.sleep(1.5 * (attempt + 1))
+                else:
+                    time.sleep(1.0)
+            except Exception:
+                time.sleep(1.0)
+
+        if not r or r.status_code != 200:
+            print(f"OpenAI API failed after retries: {r.status_code if r else 'No response'}")
             return None
 
         raw = json.loads(r.json()['choices'][0]['message']['content'])
