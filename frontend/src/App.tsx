@@ -111,6 +111,7 @@ function MenuIcon() {
 
 /* ─── Sidebar Component ─── */
 function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user?: any }) {
+    const isAdmin = user?.role === 'admin'
     // القوائم لجميع المستخدمين (تظهر المنقيات للجميع: الأدمن يرى الكل، والعضو يرى منقيته)
     const filteredGroups = NAV_GROUPS
 
