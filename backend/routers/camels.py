@@ -19,7 +19,7 @@ router = APIRouter(prefix="/camels", tags=["camels"])
 
 def _validate_and_enrich(camel: Camel) -> Camel:
     attrs = [camel.nose, camel.lips, camel.head, camel.neck, camel.hump, camel.eyelashes, camel.ear]
-    if all(v is not None for v in attrs):
+    if all(v is not None and v > 0 for v in attrs):
         pv, sv, ep, es, ef = validate_camel_data(
             camel.points, camel.spacing,
             camel.nose, camel.lips, camel.head,
@@ -29,7 +29,7 @@ def _validate_and_enrich(camel: Camel) -> Camel:
         camel.spacing_valid = sv
         camel.is_valid = pv and sv
         camel.needs_review = not (pv and sv)
-        camel.harmony = compute_harmony([v for v in attrs if v is not None])
+        camel.harmony = compute_harmony([v for v in attrs if v is not None and v > 0])
     else:
         camel.points_valid = False
         camel.spacing_valid = False
@@ -39,13 +39,14 @@ def _validate_and_enrich(camel: Camel) -> Camel:
 
 
 def _camel_to_dict(camel: Camel, db: Session) -> dict:
+    _validate_and_enrich(camel)
     d = {c.name: getattr(camel, c.name) for c in camel.__table__.columns}
     stable = db.query(Stable).filter(Stable.id == camel.stable_id).first() if camel.stable_id else None
     d["stable_name"] = stable.name if stable else None
 
     # Add validation info
     attrs = [camel.nose, camel.lips, camel.head, camel.neck, camel.hump, camel.eyelashes, camel.ear]
-    if all(v is not None for v in attrs):
+    if all(v is not None and v > 0 for v in attrs):
         _, _, ep, es, _ = validate_camel_data(
             camel.points, camel.spacing,
             camel.nose, camel.lips, camel.head,
@@ -53,6 +54,9 @@ def _camel_to_dict(camel: Camel, db: Session) -> dict:
         )
         d["expected_points"] = ep
         d["expected_spacing"] = es
+    else:
+        d["expected_points"] = None
+        d["expected_spacing"] = None
     return d
 
 

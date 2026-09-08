@@ -43,6 +43,24 @@ app.include_router(ocr.router)
 app.include_router(excel.router)
 
 
+@app.on_event("startup")
+def validate_and_fix_existing_camels():
+    """Ensure all existing camels in the database have their validation flags accurately synced."""
+    from database import SessionLocal
+    from models.camel import Camel
+    from routers.camels import _validate_and_enrich
+    db = SessionLocal()
+    try:
+        all_camels = db.query(Camel).all()
+        for c in all_camels:
+            _validate_and_enrich(c)
+        db.commit()
+    except Exception as e:
+        print(f"Startup camel validation note: {e}")
+    finally:
+        db.close()
+
+
 @app.get("/")
 def root():
     return {"message": "نظام إدارة النياق - مزاين 🐪", "version": "1.0.0"}

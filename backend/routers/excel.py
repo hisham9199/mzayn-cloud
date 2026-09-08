@@ -60,7 +60,7 @@ async def import_excel(
 
             # Validate
             attrs = [camel.nose, camel.lips, camel.head, camel.neck, camel.hump, camel.eyelashes, camel.ear]
-            if all(v is not None for v in attrs):
+            if all(v is not None and v > 0 for v in attrs):
                 pv, sv, ep, es, _ = validate_camel_data(
                     camel.points, camel.spacing,
                     camel.nose, camel.lips, camel.head,
@@ -69,9 +69,12 @@ async def import_excel(
                 camel.points_valid = pv
                 camel.spacing_valid = sv
                 camel.is_valid = pv and sv
-                camel.harmony = compute_harmony([v for v in attrs if v is not None])
+                camel.harmony = compute_harmony([v for v in attrs if v is not None and v > 0])
                 camel.needs_review = not (pv and sv)
             else:
+                camel.points_valid = False
+                camel.spacing_valid = False
+                camel.is_valid = False
                 camel.needs_review = True
 
             db.add(camel)

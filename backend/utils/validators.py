@@ -30,9 +30,15 @@ def validate_camel_data(
     attrs = [nose, lips, head, neck, hump, eyelashes, ear]
     error_fields = []
 
-    # Check if all attributes are provided
-    if any(v is None for v in attrs):
-        return False, False, None, None, []
+    # Check if all attributes are provided and strictly positive (> 0)
+    invalid_attrs = [name for name, val in zip(ATTRIBUTES, attrs) if val is None or val <= 0]
+    if invalid_attrs:
+        error_fields.extend(invalid_attrs)
+        if points is None:
+            error_fields.append("points")
+        if spacing is None:
+            error_fields.append("spacing")
+        return False, False, None, None, error_fields
 
     expected_points = sum(attrs)
     expected_spacing = max(attrs) - min(attrs)

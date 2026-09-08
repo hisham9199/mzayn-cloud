@@ -114,7 +114,7 @@ export const GENDER_OPTIONS = ['ذكر', 'أنثى']
 
 export function computeExpected(camel: Partial<Camel>) {
     const attrs = ATTRIBUTES.map(a => camel[a] ?? 0)
-    if (attrs.some(v => !v)) return { expectedPoints: null, expectedSpacing: null }
+    if (attrs.some(v => !v || v <= 0)) return { expectedPoints: null, expectedSpacing: null }
     const expectedPoints = attrs.reduce((a, b) => a + b, 0)
     const expectedSpacing = Math.max(...attrs) - Math.min(...attrs)
     return { expectedPoints, expectedSpacing }

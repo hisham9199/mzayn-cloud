@@ -755,8 +755,12 @@ function BulkAssignModal({
 
 /* ----------- Camel Status Badge ----------- */
 function CamelStatusBadge({ camel }: { camel: Camel }) {
-    if (camel.is_valid) return <span className="badge badge-green">صحيح</span>
-    if (camel.needs_review) return <span className="badge badge-yellow">مراجعة</span>
+    const hasZeroOrMissing = ATTRIBUTES.some(a => {
+        const val = camel[a as keyof Camel]
+        return val === undefined || val === null || (val as number) <= 0
+    })
+    if (!hasZeroOrMissing && camel.is_valid) return <span className="badge badge-green">صحيح</span>
+    if (camel.needs_review || hasZeroOrMissing) return <span className="badge badge-yellow">مراجعة</span>
     return <span className="badge badge-red">خطأ</span>
 }
 
@@ -979,10 +983,14 @@ export default function Camels() {
                             <tbody>
                                 {camels.map((c: Camel) => {
                                     const isSelected = selectedIds.has(c.id)
+                                    const hasZeroOrMissing = ATTRIBUTES.some(a => {
+                                        const val = c[a as keyof Camel]
+                                        return val === undefined || val === null || (val as number) <= 0
+                                    })
                                     return (
                                         <tr key={c.id}
                                             style={isSelected ? { background: 'var(--primary-light)' } : undefined}
-                                            className={`camel-row ${c.is_valid ? 'valid' : c.needs_review ? 'warning' : 'invalid'}`}>
+                                            className={`camel-row ${!hasZeroOrMissing && c.is_valid ? 'valid' : c.needs_review || hasZeroOrMissing ? 'warning' : 'invalid'}`}>
                                             <td style={{ textAlign: 'center' }}>
                                                 <input
                                                     type="checkbox"
@@ -994,11 +1002,28 @@ export default function Camels() {
                                             <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name || '—'}</td>
                                             <td><span className="badge badge-gray">{c.stable_name || '—'}</span></td>
                                             <td>{c.gender || '—'}</td>
-                                            <td><strong style={{ color: c.points_valid ? 'var(--success)' : 'var(--danger)' }}>{c.points?.toLocaleString('ar') ?? '—'}</strong></td>
+                                            <td><strong style={{ color: !hasZeroOrMissing && c.points_valid ? 'var(--success)' : 'var(--danger)' }}>{c.points?.toLocaleString('ar') ?? '—'}</strong></td>
                                             <td><span className={`badge badge-${(c.spacing ?? 99) === 0 ? 'green' : (c.spacing ?? 99) <= 3 ? 'yellow' : 'red'}`}>{c.spacing ?? '—'}</span></td>
-                                            {ATTRIBUTES.map(a => (
-                                                <td key={a} style={{ textAlign: 'center', fontSize: '0.85rem' }}>{c[a as keyof Camel] ?? '—'}</td>
-                                            ))}
+                                            {ATTRIBUTES.map(a => {
+                                                const val = c[a as keyof Camel] as number | undefined
+                                                const isBad = val === undefined || val === null || val <= 0
+                                                return (
+                                                    <td key={a} style={{
+                                                        textAlign: 'center',
+                                                        fontSize: '0.85rem',
+                                                        color: isBad ? 'var(--danger)' : undefined,
+                                                        fontWeight: isBad ? 'bold' : 'normal'
+                                                    }}>
+                                                        {isBad ? (
+                                                            <span className="badge badge-red" style={{ fontSize: '0.75rem', padding: '1px 5px' }} title="درجة مفقودة أو غير صحيحة">
+                                                                {val ?? 0}
+                                                            </span>
+                                                        ) : (
+                                                            val
+                                                        )}
+                                                    </td>
+                                                )
+                                            })}
                                             <td>{STATUS_LABELS[c.status] || c.status}</td>
                                             <td style={{ cursor: 'pointer' }} onClick={() => setModal({ type: 'edit', camel: c })} title="انقر لتعديل وتصحيح الناقة">
                                                 <CamelStatusBadge camel={c} />

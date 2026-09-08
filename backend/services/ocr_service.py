@@ -783,6 +783,8 @@ Extract the following fields accurately and return STRICTLY a JSON object:
 }
 Rules:
 - The 7 traits are: head, neck, nose, lips, hump, ear, eyelashes.
+- All 7 traits are strictly POSITIVE integers (typically between 200 and 350, NEVER 0).
+- If any trait is unreadable or missing, return null for that trait. NEVER return 0.
 - Verify: sum(traits) == points
 - Verify: max(traits) - min(traits) == spacing
 Return ONLY the JSON.
@@ -829,13 +831,16 @@ Return ONLY the JSON.
         raw = json.loads(r.json()['choices'][0]['message']['content'])
         field_values = {}
         attr_vals = []
+        invalid_attrs = []
         for a in ALL_ATTRIBUTES:
             val = raw.get(a)
-            if val is not None and str(val).isdigit():
+            if val is not None and str(val).isdigit() and int(val) > 0:
                 field_values[a] = {"value": str(val), "confidence": 0.99, "status": "green"}
                 attr_vals.append(int(val))
             else:
-                field_values[a] = {"value": "", "confidence": 0.0, "status": "red"}
+                raw_str = str(val) if val is not None else ""
+                field_values[a] = {"value": raw_str if raw_str.isdigit() and int(raw_str) > 0 else "", "confidence": 0.0, "status": "red"}
+                invalid_attrs.append(a)
 
         calc_sum = sum(attr_vals) if attr_vals else 0
         calc_sp = (max(attr_vals) - min(attr_vals)) if attr_vals else 0
@@ -845,13 +850,16 @@ Return ONLY the JSON.
         pts = raw_pts if (raw_pts is not None and str(raw_pts).isdigit()) else calc_sum
         sp = raw_sp if (raw_sp is not None and str(raw_sp).isdigit()) else calc_sp
 
-        # تصحيح رياضي تلقائي
-        if len(attr_vals) == 7:
+        # تصحيح رياضي تلقائي فقط في حال كانت جميع الصفات السبع موجودة وأكبر من صفر
+        has_all_seven = (len(attr_vals) == 7 and len(invalid_attrs) == 0)
+        if has_all_seven:
             pts = calc_sum
             sp = calc_sp
 
-        field_values["points"] = {"value": str(pts), "confidence": 0.99, "status": "green"}
-        field_values["spacing"] = {"value": str(sp), "confidence": 0.99, "status": "green"}
+        valid = bool(has_all_seven and int(pts) == calc_sum and int(sp) == calc_sp)
+
+        field_values["points"] = {"value": str(pts), "confidence": 0.99 if has_all_seven else 0.5, "status": "green" if valid else "red"}
+        field_values["spacing"] = {"value": str(sp), "confidence": 0.99 if has_all_seven else 0.5, "status": "green" if valid else "red"}
         field_values["number"] = {"value": str(raw.get("number") or ""), "confidence": 0.99, "status": "green"}
         field_values["name"] = {"value": str(raw.get("name") or raw.get("number") or ""), "confidence": 0.99, "status": "green"}
         gender_str = str(raw.get("gender") or "").strip()
@@ -864,12 +872,11 @@ Return ONLY the JSON.
         field_values["gender"] = {"value": gender_clean, "confidence": 0.99, "status": "green"}
         field_values["color"] = {"value": str(raw.get("color") or ""), "confidence": 0.99, "status": "green"}
 
-        valid = bool(len(attr_vals) == 7 and int(pts) == calc_sum and int(sp) == calc_sp)
         field_values["validation_ok"] = valid
-        field_values["expected_points"] = calc_sum
-        field_values["expected_spacing"] = calc_sp
-        field_values["overall_confidence"] = 0.99
-        field_values["overall_status"] = "green" if valid else ("yellow" if len(attr_vals) >= 5 else "red")
+        field_values["expected_points"] = calc_sum if has_all_seven else None
+        field_values["expected_spacing"] = calc_sp if has_all_seven else None
+        field_values["overall_confidence"] = 0.99 if valid else 0.50
+        field_values["overall_status"] = "green" if valid else ("yellow" if len(attr_vals) >= 4 else "red")
         field_values["ocr_engine"] = "openai_vision"
         return field_values
     except Exception as e:
