@@ -12,10 +12,10 @@ interface ExtractedCamelItem {
     errorMsg?: string
 }
 
-// ضغط وتصغير الصور الكبيرة في المتصفح قبل إرسالها لسرعة فائقة وتوفير الحجم
-async function optimizeImageForOcr(file: File, maxDimension = 1600, quality = 0.85): Promise<File> {
-    if (!file.type.startsWith('image/') || file.size < 400 * 1024) {
-        return file // أقل من 400KB لا يحتاج ضغط
+// الحفاظ على أقصى دقة للصور لقراءة الأرقام بنسبة 100% بدون تشويش
+async function optimizeImageForOcr(file: File, maxDimension = 2048, quality = 0.92): Promise<File> {
+    if (!file.type.startsWith('image/') || file.size < 2 * 1024 * 1024) {
+        return file // أقل من 2MB أرسلها بدقتها الأصلية 100% بدون أي ضغط
     }
     return new Promise((resolve) => {
         const img = new Image()

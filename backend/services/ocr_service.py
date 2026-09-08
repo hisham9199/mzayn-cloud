@@ -751,117 +751,198 @@ def merge_block_results(all_block_sets: List[List[Dict]], img_h: int, img_w: int
                 best_result["overall_status"] = "green" if best_result["validation_ok"] else "yellow"
             except Exception:
                 pass
-
     return best_result
 
 
 def run_openai_vision(image_bytes: bytes) -> Optional[Dict[str, Any]]:
-    """استخراج بيانات بطاقة الناقة عبر OpenAI GPT-4o-mini Vision (فائق السرعة والدقة)"""
+    """
+    Super-charged AI OCR using OpenAI Vision with expert Mazayen prompt,
+    mathematical auto-reconciliation, and multi-model escalation (gpt-4o-mini -> gpt-4o).
+    """
     if not OPENAI_API_KEY:
         return None
     import requests, base64, json
 
     try:
         b64 = base64.b64encode(image_bytes).decode('utf-8')
-        prompt = """
-You are an expert OCR model for camel competition evaluation cards in Arabic (نظام كشف وتقييم النياق - مزاين).
-Extract the following fields accurately and return STRICTLY a JSON object:
+        prompt = """أنت نظام فحص وتحكيم خبير ومتقدم جداً في مسابقات جمال الإبل (مزاين الإبل).
+المهمة: استخراج بيانات كارت تحكيم الناقة بدقة تامة 100%.
+
+بنية بطاقة المزاين:
+1. في أعلى البطاقة على اليمين: رقم أو اسم الناقة (مثلاً: 32 أو 1982 أو 1 أو الاسم المكتوب).
+   تنبيه هام جداً: المربع الصغير الذي يحتوي على "بدون وسم" أو "وسم" هو علامة الوسم وليس اسم الناقة إطلاقاً، لا تضع كلمة وسم في الاسم أو الرقم.
+2. في جدول البيانات:
+   - السلالة (اللون) مثل: مجاهيم، وضح، صفر، شعل، حمر، شقح...
+   - الجنس: أنثى أو ذكر
+3. في رسم الناقة التخطيطي (مخطط المواصفات):
+   - كلمة "المواصفات" أو "النقاط" وجانبها المجموع الكلي (مثال: 2170 أو 1982).
+   - كلمة "التباعد" وجانبها رقم التباعد (مثال: 15 أو 4).
+   - مربعات الصفات السبع وأرقامها المتصلة بمؤشرات على جسم الناقة:
+     * الرأس (head)
+     * الرقبة (neck)
+     * الأنف (nose)
+     * الشفاه (lips)
+     * الرموش (eyelashes) - انتبه للخط المتقطع المتصل بالرموش/العين في أعلى الرأس
+     * الأذن (ear)
+     * السنام (hump)
+
+قواعد رياضية صارمة للتحقق الذاتي:
+- مجموع الصفات السبع = النقاط (المواصفات): sum(traits) == points
+- الفارق بين أعلى صفة وأقل صفة = التباعد: max(traits) - min(traits) == spacing
+- درجات الصفات أرقام صحيحة موجبة (عادة بين 200 و 350). لا توجد صفة تساوي 0.
+- إذا كانت هناك صفة غير واضحة تماماً، ضعها null ولا تضع 0 أبداً.
+
+أرجع فقط كائن JSON بهذا الهيكل الدقيق:
 {
-  "points": integer, // مجموع النقاط (المواصفات)
-  "spacing": integer, // التباعد
-  "number": "string", // رقم أو اسم الناقة
-  "name": "string", // اسم الناقة إن وجد
-  "gender": "string", // الجنس: "ذكر" أو "أنثى" إن وجد، وإلا ""
-  "color": "string", // اللون أو السلالة إن وجد (مثال: حمر، صفر، وضح، مجاهيم...)
-  "head": integer, // الرأس
-  "neck": integer, // الرقبة
-  "nose": integer, // الأنف
-  "lips": integer, // الشفاه
-  "hump": integer, // السنام
-  "ear": integer, // الأذن
-  "eyelashes": integer // الرموش
+  "number": "string",
+  "name": "string",
+  "gender": "string",
+  "color": "string",
+  "points": integer,
+  "spacing": integer,
+  "head": integer,
+  "neck": integer,
+  "nose": integer,
+  "lips": integer,
+  "eyelashes": integer,
+  "ear": integer,
+  "hump": integer
 }
-Rules:
-- The 7 traits are: head, neck, nose, lips, hump, ear, eyelashes.
-- All 7 traits are strictly POSITIVE integers (typically between 200 and 350, NEVER 0).
-- If any trait is unreadable or missing, return null for that trait. NEVER return 0.
-- Verify: sum(traits) == points
-- Verify: max(traits) - min(traits) == spacing
-Return ONLY the JSON.
 """
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
             'Content-Type': 'application/json'
         }
-        payload = {
-            'model': 'gpt-4o-mini',
-            'messages': [
-                {
-                    'role': 'user',
-                    'content': [
-                        {'type': 'text', 'text': prompt},
-                        {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}', 'detail': 'high'}}
-                    ]
-                }
-            ],
-            'response_format': {'type': 'json_object'},
-            'temperature': 0.0,
-            'max_tokens': 500
-        }
-        
-        # محاولة الطلب مع إعادة المحاولة في حال وجود ضغط شبكة أو Rate Limit
-        import time
-        r = None
-        for attempt in range(3):
-            try:
-                r = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=payload, timeout=35)
-                if r.status_code == 200:
-                    break
-                elif r.status_code == 429:
-                    time.sleep(1.5 * (attempt + 1))
-                else:
-                    time.sleep(1.0)
-            except Exception:
-                time.sleep(1.0)
 
-        if not r or r.status_code != 200:
-            print(f"OpenAI API failed after retries: {r.status_code if r else 'No response'}")
+        def call_model(model_name: str):
+            payload = {
+                'model': model_name,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': [
+                            {'type': 'text', 'text': prompt},
+                            {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}', 'detail': 'high'}}
+                        ]
+                    }
+                ],
+                'response_format': {'type': 'json_object'},
+                'temperature': 0.0,
+                'max_tokens': 600
+            }
+            import time
+            for attempt in range(2):
+                try:
+                    r = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=payload, timeout=35)
+                    if r.status_code == 200:
+                        return json.loads(r.json()['choices'][0]['message']['content'])
+                    elif r.status_code == 429:
+                        time.sleep(1.5 * (attempt + 1))
+                except Exception:
+                    time.sleep(1.0)
             return None
 
-        raw = json.loads(r.json()['choices'][0]['message']['content'])
+        # المحاولة الأولى باستخدام gpt-4o-mini
+        raw = call_model('gpt-4o-mini')
+
+        def evaluate_and_heal(data: dict):
+            if not data:
+                return {}, None, None, False
+
+            raw_pts = data.get("points")
+            raw_sp = data.get("spacing")
+            pts = int(raw_pts) if (raw_pts is not None and str(raw_pts).isdigit() and int(raw_pts) > 0) else None
+            sp = int(raw_sp) if (raw_sp is not None and str(raw_sp).isdigit()) else None
+
+            traits = {}
+            missing = []
+            for a in ALL_ATTRIBUTES:
+                val = data.get(a)
+                if val is not None and str(val).isdigit() and int(val) > 0:
+                    traits[a] = int(val)
+                else:
+                    missing.append(a)
+
+            # حل رياضي ذاتي: إذا كانت هناك صفة واحدة فقط مفقودة والنقاط معروفة
+            if len(missing) == 1 and pts:
+                missing_attr = missing[0]
+                solved_val = pts - sum(traits.values())
+                if 150 <= solved_val <= 400:
+                    traits[missing_attr] = solved_val
+                    calc_sp = max(traits.values()) - min(traits.values())
+                    if sp is None or sp == calc_sp or abs(sp - calc_sp) <= 1:
+                        sp = calc_sp
+                        missing = []
+
+            # معالجة تصحيح خطأ قراءة رقم واحد بفارق طفيف (1 إلى 6 نقاط)
+            if len(traits) == 7 and pts:
+                calc_sum = sum(traits.values())
+                diff = pts - calc_sum
+                if diff != 0 and abs(diff) <= 6 and sp is not None:
+                    for a in ALL_ATTRIBUTES:
+                        cand_val = traits[a] + diff
+                        if 150 <= cand_val <= 400:
+                            cand_traits = traits.copy()
+                            cand_traits[a] = cand_val
+                            if max(cand_traits.values()) - min(cand_traits.values()) == sp:
+                                traits = cand_traits
+                                break
+
+            # تأكيد النقاط والتباعد إذا اكتملت الصفات السبع
+            if len(traits) == 7:
+                calc_sum = sum(traits.values())
+                calc_sp = max(traits.values()) - min(traits.values())
+                if pts is None or pts == calc_sum:
+                    pts = calc_sum
+                if sp is None or sp == calc_sp:
+                    sp = calc_sp
+
+            is_valid = bool(
+                len(traits) == 7 and
+                pts is not None and pts == sum(traits.values()) and
+                sp is not None and sp == (max(traits.values()) - min(traits.values()))
+            )
+            return traits, pts, sp, is_valid
+
+        traits, pts, sp, is_valid = evaluate_and_heal(raw) if raw else ({}, None, None, False)
+
+        # إذا لم يتم استخراج كافة الصفات بدقة، تصعيد تلقائي للنموذج الأقوى gpt-4o
+        if not is_valid and len(traits) < 7:
+            raw_flagship = call_model('gpt-4o')
+            if raw_flagship:
+                t2, p2, s2, v2 = evaluate_and_heal(raw_flagship)
+                if v2 or len(t2) > len(traits):
+                    raw = raw_flagship
+                    traits, pts, sp, is_valid = t2, p2, s2, v2
+
+        if not raw:
+            return None
+
         field_values = {}
-        attr_vals = []
-        invalid_attrs = []
         for a in ALL_ATTRIBUTES:
-            val = raw.get(a)
-            if val is not None and str(val).isdigit() and int(val) > 0:
-                field_values[a] = {"value": str(val), "confidence": 0.99, "status": "green"}
-                attr_vals.append(int(val))
+            if a in traits:
+                field_values[a] = {"value": str(traits[a]), "confidence": 0.99, "status": "green"}
             else:
-                raw_str = str(val) if val is not None else ""
-                field_values[a] = {"value": raw_str if raw_str.isdigit() and int(raw_str) > 0 else "", "confidence": 0.0, "status": "red"}
-                invalid_attrs.append(a)
+                field_values[a] = {"value": "", "confidence": 0.0, "status": "red"}
 
-        calc_sum = sum(attr_vals) if attr_vals else 0
-        calc_sp = (max(attr_vals) - min(attr_vals)) if attr_vals else 0
+        calc_sum = sum(traits.values()) if traits else None
+        calc_sp = (max(traits.values()) - min(traits.values())) if len(traits) >= 2 else None
 
-        raw_pts = raw.get("points")
-        raw_sp = raw.get("spacing")
-        pts = raw_pts if (raw_pts is not None and str(raw_pts).isdigit()) else calc_sum
-        sp = raw_sp if (raw_sp is not None and str(raw_sp).isdigit()) else calc_sp
+        field_values["points"] = {"value": str(pts) if pts else (str(calc_sum) if calc_sum else ""), "confidence": 0.99 if is_valid else 0.5, "status": "green" if is_valid else "red"}
+        field_values["spacing"] = {"value": str(sp) if sp is not None else (str(calc_sp) if calc_sp is not None else ""), "confidence": 0.99 if is_valid else 0.5, "status": "green" if is_valid else "red"}
 
-        # تصحيح رياضي تلقائي فقط في حال كانت جميع الصفات السبع موجودة وأكبر من صفر
-        has_all_seven = (len(attr_vals) == 7 and len(invalid_attrs) == 0)
-        if has_all_seven:
-            pts = calc_sum
-            sp = calc_sp
+        # استخراج الاسم والرقم وتجاهل كلمة وسم كاسم
+        extracted_num = str(raw.get("number") or "").strip()
+        extracted_name = str(raw.get("name") or "").strip()
+        if extracted_num in ["وسم", "بدون وسم", "بدون"]:
+            extracted_num = ""
+        if extracted_name in ["وسم", "بدون وسم", "بدون"]:
+            extracted_name = ""
 
-        valid = bool(has_all_seven and int(pts) == calc_sum and int(sp) == calc_sp)
+        final_num = extracted_num or extracted_name or ""
+        field_values["number"] = {"value": final_num, "confidence": 0.99, "status": "green"}
+        field_values["name"] = {"value": extracted_name or final_num, "confidence": 0.99, "status": "green"}
 
-        field_values["points"] = {"value": str(pts), "confidence": 0.99 if has_all_seven else 0.5, "status": "green" if valid else "red"}
-        field_values["spacing"] = {"value": str(sp), "confidence": 0.99 if has_all_seven else 0.5, "status": "green" if valid else "red"}
-        field_values["number"] = {"value": str(raw.get("number") or ""), "confidence": 0.99, "status": "green"}
-        field_values["name"] = {"value": str(raw.get("name") or raw.get("number") or ""), "confidence": 0.99, "status": "green"}
         gender_str = str(raw.get("gender") or "").strip()
         if "ذكر" in gender_str or "فحل" in gender_str or "قعود" in gender_str or "جمل" in gender_str:
             gender_clean = "ذكر"
@@ -872,11 +953,11 @@ Return ONLY the JSON.
         field_values["gender"] = {"value": gender_clean, "confidence": 0.99, "status": "green"}
         field_values["color"] = {"value": str(raw.get("color") or ""), "confidence": 0.99, "status": "green"}
 
-        field_values["validation_ok"] = valid
-        field_values["expected_points"] = calc_sum if has_all_seven else None
-        field_values["expected_spacing"] = calc_sp if has_all_seven else None
-        field_values["overall_confidence"] = 0.99 if valid else 0.50
-        field_values["overall_status"] = "green" if valid else ("yellow" if len(attr_vals) >= 4 else "red")
+        field_values["validation_ok"] = is_valid
+        field_values["expected_points"] = calc_sum if len(traits) == 7 else None
+        field_values["expected_spacing"] = calc_sp if len(traits) == 7 else None
+        field_values["overall_confidence"] = 0.99 if is_valid else 0.60
+        field_values["overall_status"] = "green" if is_valid else ("yellow" if len(traits) >= 5 else "red")
         field_values["ocr_engine"] = "openai_vision"
         return field_values
     except Exception as e:
@@ -889,14 +970,14 @@ Return ONLY the JSON.
 # ------------------------------------------------------------------ #
 def extract_camel_data_from_image_sync(image_bytes: bytes) -> Dict[str, Any]:
     """Accepts raw image bytes and returns structured dictionary with confidence."""
-    # 0. الفحص الفائق بالذكاء الاصطناعي السحابي (OpenAI GPT-4o-mini Vision) كخيار أول فائق السرعة
+    # 0. الفحص الفائق بالذكاء الاصطناعي السحابي (OpenAI Vision) كخيار أول فائق الدقة
     if OPENAI_API_KEY:
         try:
             openai_res = run_openai_vision(image_bytes)
-            if openai_res and (openai_res.get("validation_ok") or openai_res.get("overall_status") in ("green", "yellow")):
+            if openai_res:
                 return openai_res
         except Exception as e:
-            print(f"OpenAI fallback to local OCR: {e}")
+            print(f"OpenAI error: {e}")
 
     img = decode_image_with_exif(image_bytes)
 
