@@ -111,16 +111,8 @@ function MenuIcon() {
 
 /* ─── Sidebar Component ─── */
 function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user?: any }) {
-    const isAdmin = user?.role === 'admin'
-
-    // فلترة القوائم للمستخدم العادي (إخفاء المنقيات إذا كان مخصصاً لمنقيته فقط)
-    const filteredGroups = NAV_GROUPS.map(group => ({
-        ...group,
-        items: group.items.filter(item => {
-            if (item.to === '/stables' && !isAdmin) return false // المنقيات العامة تظهر للأدمن
-            return true
-        })
-    }))
+    // القوائم لجميع المستخدمين (تظهر المنقيات للجميع: الأدمن يرى الكل، والعضو يرى منقيته)
+    const filteredGroups = NAV_GROUPS
 
     return (
         <>

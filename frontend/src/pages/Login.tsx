@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react'
+import React, { useState } from 'react'
 import { authApi } from '../api/client'
 import toast from 'react-hot-toast'
 
@@ -11,10 +11,13 @@ export default function Login({ error }: { error?: string | null }) {
             const res = await authApi.getLoginUrl()
             if (res.data?.url) {
                 window.location.href = res.data.url
+                return
             }
         } catch (e: any) {
-            toast.error('تعذر الاتصال بديسكورد، يرجى المحاولة لاحقاً')
-            setLoading(false)
+            // في حال تعذر الاتصال بـ API، توجيه مباشر ومضمون إلى رابط OAuth2 الخاص بالديسكورد
+            const clientId = '1544401637446258898'
+            const redirectUri = encodeURIComponent(window.location.origin + '/api/auth/discord/callback')
+            window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=identify%20guilds.members.read`
         }
     }
 
