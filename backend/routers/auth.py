@@ -87,88 +87,107 @@ def discord_login():
 
 @router.get("/discord/callback")
 def discord_callback(code: str, db: Session = Depends(get_db)):
-    # 1. تبديل الـ Code بـ Access Token من ديسكورد
-    data = {
-        "client_id": DISCORD_CLIENT_ID,
-        "client_secret": DISCORD_CLIENT_SECRET,
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": DISCORD_REDIRECT_URI,
-    }
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    r = requests.post("https://discord.com/api/oauth2/token", data=data, headers=headers)
-    if r.status_code != 200:
+    try:
+        # 1. تبديل الـ Code بـ Access Token من ديسكورد
+        data = {
+            "client_id": DISCORD_CLIENT_ID,
+            "client_secret": DISCORD_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": DISCORD_REDIRECT_URI,
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        r = requests.post("https://discord.com/api/oauth2/token", data=data, headers=headers, timeout=15)
+        if r.status_code != 200:
+            print(f"[AUTH ERROR] Token exchange failed: {r.status_code} - {r.text}")
+            return RedirectResponse(url="/?error=discord_token_failed")
+
+        token_data = r.json()
+        user_access_token = token_data.get("access_token")
+
+        # 2. جلب هوية المستخدم من ديسكورد
+        user_res = requests.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {user_access_token}"},
+            timeout=15
+        )
+        if user_res.status_code != 200:
+            print(f"[AUTH ERROR] Fetch user failed: {user_res.status_code} - {user_res.text}")
+            return RedirectResponse(url="/?error=discord_user_failed")
+
+        user_info = user_res.json()
+        discord_id = str(user_info["id"])
+        username = user_info.get("username", "")
+        global_name = user_info.get("global_name") or username
+        avatar = user_info.get("avatar")
+
+        # 3. جلب رتب المستخدم داخل سيرفرك المحدد
+        member_res = None
+        if DISCORD_BOT_TOKEN:
+            bot_headers = {"Authorization": f"Bot {DISCORD_BOT_TOKEN}"}
+            try:
+                member_res = requests.get(
+                    f"https://discord.com/api/guilds/{GUILD_ID}/members/{discord_id}",
+                    headers=bot_headers,
+                    timeout=15
+                )
+            except Exception as be:
+                print(f"[AUTH WARNING] Bot request failed: {be}")
+
+        # إذا لم يكن البوت قادراً على الوصول عبر Bot Token، نستخدم التوكن الخاص بالمستخدم
+        if not member_res or member_res.status_code != 200:
+            try:
+                member_res = requests.get(
+                    f"https://discord.com/api/users/@me/guilds/{GUILD_ID}/member",
+                    headers={"Authorization": f"Bearer {user_access_token}"},
+                    timeout=15
+                )
+            except Exception as ue:
+                print(f"[AUTH ERROR] User member request failed: {ue}")
+
+        if not member_res or member_res.status_code != 200:
+            print(f"[AUTH ERROR] Member check failed: {member_res.status_code if member_res else 'None'}")
+            return RedirectResponse(url="/?error=not_in_server")
+
+        member_data = member_res.json()
+        user_roles = set(member_data.get("roles", []))
+
+        # 4. فحص الصلاحيات والرتب
+        role = None
+        if user_roles.intersection(ADMIN_ROLES):
+            role = "admin"
+        elif ROLE_BASIC_USER in user_roles:
+            role = "basic_user"
+        else:
+            print(f"[AUTH ERROR] No allowed roles. User roles: {user_roles}")
+            return RedirectResponse(url="/?error=no_permission_role")
+
+        # 5. حفظ أو تحديث المستخدم في قاعدة البيانات
+        user = db.query(User).filter(User.discord_id == discord_id).first()
+        if not user:
+            user = User(
+                discord_id=discord_id,
+                username=username,
+                global_name=global_name,
+                avatar=avatar,
+                role=role,
+                is_active=True
+            )
+            db.add(user)
+        else:
+            user.username = username
+            user.global_name = global_name
+            user.avatar = avatar
+            user.role = role
+        db.commit()
+        db.refresh(user)
+
+        # 6. إصدار التوكن وتوجيه المستخدم للواجهة
+        token = create_token(user.id, user.role, user.discord_id, user.username)
+        return RedirectResponse(url=f"/?token={token}")
+    except Exception as e:
+        print(f"[AUTH FATAL EXCEPTION] {e}")
         return RedirectResponse(url="/?error=discord_token_failed")
-
-    token_data = r.json()
-    user_access_token = token_data.get("access_token")
-
-    # 2. جلب هوية المستخدم من ديسكورد
-    user_res = requests.get(
-        "https://discord.com/api/users/@me",
-        headers={"Authorization": f"Bearer {user_access_token}"}
-    )
-    if user_res.status_code != 200:
-        return RedirectResponse(url="/?error=discord_user_failed")
-
-    user_info = user_res.json()
-    discord_id = str(user_info["id"])
-    username = user_info.get("username", "")
-    global_name = user_info.get("global_name") or username
-    avatar = user_info.get("avatar")
-
-    # 3. جلب رتب المستخدم داخل سيرفرك المحدد
-    bot_headers = {"Authorization": f"Bot {DISCORD_BOT_TOKEN}"} if DISCORD_BOT_TOKEN else {}
-    member_res = requests.get(
-        f"https://discord.com/api/guilds/{GUILD_ID}/members/{discord_id}",
-        headers=bot_headers
-    )
-    
-    # إذا لم يكن البوت قادراً على الوصول عبر Bot Token، نستخدم التوكن الخاص بالمستخدم إذا توفرت صلاحية
-    if member_res.status_code != 200:
-        member_res = requests.get(
-            f"https://discord.com/api/users/@me/guilds/{GUILD_ID}/member",
-            headers={"Authorization": f"Bearer {user_access_token}"}
-        )
-
-    if member_res.status_code != 200:
-        return RedirectResponse(url="/?error=not_in_server")
-
-    member_data = member_res.json()
-    user_roles = set(member_data.get("roles", []))
-
-    # 4. فحص الصلاحيات والرتب
-    role = None
-    if user_roles.intersection(ADMIN_ROLES):
-        role = "admin"
-    elif ROLE_BASIC_USER in user_roles:
-        role = "basic_user"
-    else:
-        return RedirectResponse(url="/?error=no_permission_role")
-
-    # 5. حفظ أو تحديث المستخدم في قاعدة البيانات
-    user = db.query(User).filter(User.discord_id == discord_id).first()
-    if not user:
-        user = User(
-            discord_id=discord_id,
-            username=username,
-            global_name=global_name,
-            avatar=avatar,
-            role=role,
-            is_active=True
-        )
-        db.add(user)
-    else:
-        user.username = username
-        user.global_name = global_name
-        user.avatar = avatar
-        user.role = role
-    db.commit()
-    db.refresh(user)
-
-    # 6. إصدار التوكن وتوجيه المستخدم للواجهة
-    token = create_token(user.id, user.role, user.discord_id, user.username)
-    return RedirectResponse(url=f"/?token={token}")
 
 
 @router.get("/me")
